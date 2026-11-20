@@ -2,7 +2,7 @@
 
 Shared chats between people and their Blobs, inside Blob. Each chat is a Blob table its creator owns and
 shares by email at Can edit; each person's Blob mirrors it into fixed local tables that the Blob Comm pane
-reads, and Blobs tell each other about new rows with messageBlob. Full design: [SPEC.md](SPEC.md).
+reads, and Blobs tell each other about new rows with messageBlob. 
 
 ## Install and set up
 
@@ -68,11 +68,15 @@ session are refused.
   `blobcom.incoming`). Narrow it further if Blob adds per-table grants or a way to hear events without
   reading sessions.
 
+## Updates
+
+Your copy checks once a day for a newer version and tells you once, in plain words; say "update
+Blob Comm" to your Blob to get it.
+
 ## Layout
 
 ```
 .claude-plugin/plugin.json
-SPEC.md                         design, tables, flows, brakes, changes log
 skills/blob-com/SKILL.md        what a Blob does with Blob Comm
 skills/blob-com/scripts/blobcom.sh   deterministic helpers (bash + jq + blob platform)
 tests/core/test_jqlib.sh        unit tests (bash + jq; run locally or in Blob's shell)

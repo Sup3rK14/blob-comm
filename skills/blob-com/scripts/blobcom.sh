@@ -23,8 +23,6 @@
 #   blobcom.sh context <chat_id> [--last 30]   recent mirrored rows (unverified text withheld)
 #   blobcom.sh digest                    the daily summary text, or stop when notify isn't digest
 #   blobcom.sh accept-invite <chat_id> [--from E] [--name N --email E]   setup (+relay) then join, for a yes-session
-#   blobcom.sh export-bundle             write this plugin's files into the private table blobcom_bundle
-#   blobcom.sh install-bundle <table_id> [--name blob-com] [--disabled]   make a plugin repository from a bundle
 #   blobcom.sh source                    where others install Blob Comm from (BLOBCOM_SOURCE)
 #
 # Exit codes: 0 ok, 1 failure, 3 brake (blob_streak reached), 4 not allowed (not yours / not pending).
@@ -32,15 +30,14 @@
 
 set -u
 BLOB="${BLOBCOM_BLOB:-blob}"
-VERSION="1"
+VERSION="2"   # bump on every release; copies compare it with the public repo to offer an update
 RELAY_ID="blob-com-relay"
 WORKER_ID="blob-com-worker"; WORKER_NAME="Blob Comm worker"
 RELAY_MODEL="${BLOBCOM_RELAY_MODEL:-anthropic:claude-haiku-5-5}"   # cheapest that reliably runs the script
 WORKER_MODEL="${BLOBCOM_WORKER_MODEL:-anthropic:claude-sonnet-5-5}" # only for jobs needing judgment
 RELAY_NAME="Blob Comm relay"
 BLOB_PLACE="${BLOBCOM_PLACE:-}"   # computer the relay runs on; empty = the account's always-on "Private Blob"/"Blob"
-# Where other people install Blob Comm from: github:<owner>/<repo>, marketplace:<plugin>, or bundle
-# (the inviter's private blobcom_bundle table, shared on request; see export-bundle / install-bundle).
+# Where other people install Blob Comm from: github:<owner>/<repo>
 BLOBCOM_SOURCE="${BLOBCOM_SOURCE:-github:Sup3rK14/blob-comm}"
 # What the relay may use (no profile: nothing else of the person's, so no mail, calendar, files, or repos).
 # Reading sessions (no acts) is what lets the relay hear blobcom.incoming events from the sessions that
@@ -154,7 +151,6 @@ def inquiet: if (.from // "") == "" or (.to // "") == "" then false
   else (.from|minutes) as $f | (.to|minutes) as $t | (.now|minutes) as $n
   | if $f == $t then false elif $f < $t then ($n >= $f and $n < $t) else ($n >= $f or $n < $t) end end;
 '
-jqf() { jq "$@"; }
 # jql [jq options...] PROGRAM: jq with the library above prepended to PROGRAM (the last argument)
 jql() {
   local n=$# i=1 prog x
@@ -343,15 +339,10 @@ ensure_relay() {
   fi
   ensure_worker "$place" >/dev/null 2>&1 || true
   # the old separate digest automation is replaced by the relay's own daily trigger
-  if bp listAutomations '{}' | jq -e '.automations[]? | select(.id=="blob-com-digest")' >/dev/null 2>&1; then
-    bp updateAutomation '{"automationId":"blob-com-digest","paused":true}' >/dev/null 2>&1 || true
-  fi
   local acc; acc=$(bp listAutomations '{}' | jq -c --arg id "$RELAY_ID" '.automations[]? | select(.id==$id) | .target.access // null')
   jq -nc --arg id "$RELAY_ID" --arg place "$place" --arg proc "$proc" --arg b "$b" --argjson acc "${acc:-null}" '{automation:$id, place:$place, process:$proc, budget:$b, access:$acc}'
 }
 
-# notify=digest: one summary a day (18:00 in the person's zone) instead of alerts; paused otherwise
-ensure_digest() { :; }  # replaced by the relay's daily "digest" trigger (blobcom.sh relay --digest)
 
 
 # ---------- the "Blob Comm" folder page in the person's Private section ----------
@@ -375,8 +366,7 @@ into_folder() { # page ids...: best effort, never fails the caller
 source_text() { # inviter_name
   case "$BLOBCOM_SOURCE" in
     github:*) echo "say yes, and their Blob installs Blob Comm in one step: install {\"repository\": \"${BLOBCOM_SOURCE#github:}\", \"owner\": \"you\"} (the public repo https://github.com/${BLOBCOM_SOURCE#github:}). Its files reach disk only from the next turn, so in the same turn read skills/blob-com/scripts/blobcom.sh with readRepositoryFile from the repository install names, save it as /tmp/blobcom.sh, and, in a session with no spend limit (Blob can't set up the relay from a limited session), run: bash /tmp/blobcom.sh accept-invite ${2:-<chat id>} --from ${3:-<inviter email>} --name <their first name> --email <their Blob account email> --timezone <their IANA time zone>";;
-    marketplace:*) echo "install the ${BLOBCOM_SOURCE#marketplace:} plugin from Blob's marketplace on the Customize page";;
-    *) echo "ask $1 to share the Blob Comm bundle with them first (a Blob table of the plugin's files, which $1 shares by hand on request). Once it's shared and they say yes, their Blob can install it with operations alone: createRepository {name: \"blob-com\", kind: \"plugin\", owner: \"you\"}; then readTable on the bundle table and writeRepositoryFiles with each row's path and text (rows marked executable as bytes, base64 of the text, executable true); then, in a chat with no spend limit, run the plugin's skills/blob-com/scripts/blobcom.sh setup --relay";;
+    *) echo "say yes, and their Blob installs Blob Comm from GitHub (Sup3rK14/blob-comm)";;
   esac
 }
 cmd_source() { jq -nc --arg s "$BLOBCOM_SOURCE" --arg t "$(source_text "the inviter")" '{source:$s, how:$t}'; }
@@ -926,22 +916,39 @@ cmd_notify() {
 }
 
 # one relay run: everything the script can do without a model; the agent acts only on "todo" (H4)
+# once a day, no model: is a newer Blob Comm out than this copy? Says so once per new version.
+check_update() {
+  local dir="$HOME/.blobcom"; mkdir -p "$dir" 2>/dev/null || return 0
+  local today; today=$(date -u +%F); [ -f "$dir/checked-$today" ] && return 0
+  rm -f "$dir"/checked-* 2>/dev/null; : > "$dir/checked-$today"
+  local src; src=$(bp listInstalled '{}' 2>/dev/null | jq -c '[.items[]? | select(.kind=="plugin" and ((.source.repo // "") | ascii_downcase | test("^sup3rk14/blob-com")))] | first // empty')
+  [ -n "$src" ] || return 0                                   # not a GitHub install (e.g. the author's own copy)
+  [ "$(echo "$src" | jq -r '.source.follow // false')" = "true" ] && return 0   # follows updates by itself
+  local latest; latest=$(curl -fsS -m 8 "https://raw.githubusercontent.com/${BLOBCOM_SOURCE#github:}/main/skills/blob-com/scripts/blobcom.sh" 2>/dev/null | sed -n 's/^VERSION="\([0-9]*\)".*/\1/p' | head -1)
+  [ -n "$latest" ] && [ "$latest" -gt "${VERSION%%[!0-9]*}" ] 2>/dev/null || return 0
+  [ -f "$dir/told-$latest" ] && return 0
+  [ "$(cmd_alert_ok)" = "yes" ] || { rm -f "$dir/checked-$today"; return 0; }   # try again after quiet hours
+  : > "$dir/told-$latest"
+  echo "Blob Comm has an update (version $latest; you have $VERSION). To get it, tell your Blob: update Blob Comm."
+}
+
 cmd_relay() {
   local chat="" type="message" from="" digest=0
   while [ $# -gt 0 ]; do case "$1" in --chat) chat=$2; shift 2;; --type) type=$2; shift 2;; --from) from=$2; shift 2;; --digest) digest=1; shift;; *) shift;; esac; done
   local ob; ob=$(cmd_outbox 2>/dev/null) || ob='{"done":[],"failed":[],"todo":[]}'
   local inc='null'; [ -n "$chat" ] && { inc=$(cmd_incoming "$chat" --type "$type" --from "$from" 2>/dev/null) || inc='{"stop":true,"ignored":"incoming failed"}'; }
   local dg='null'; [ $digest = 1 ] && { dg=$(cmd_digest 2>/dev/null) || dg='{"stop":true}'; }
-  jq -nc --argjson ob "$ob" --argjson inc "$inc" --argjson dg "$dg" '
+  local up; up=$(check_update 2>/dev/null || true)
+  jq -nc --argjson ob "$ob" --argjson inc "$inc" --argjson dg "$dg" --arg up "$up" '
     (($ob.todo // []) + (if $inc then ($inc.todo // []) | map({action:"answer", row:.}) else [] end)) as $todo
-    | ([($inc // {}).say, ($dg // {}).say] | map(select(. != null)) | first) as $say
+    | ([($inc // {}).say, ($dg // {}).say, (if $up != "" then $up else null end)] | map(select(. != null)) | join("\n") | if . == "" then null else . end) as $say
     | {stop:(($todo|length) == 0 and $say == null), todo:$todo,
        outbox:{done:($ob.done|length), failed:($ob.failed // [] | map({action, error}))},
        incoming:(if $inc then ($inc | del(.todo)) else null end)}
     + (if $say then {say:$say} else {} end)'
 }
 
-# ---------- invite yes, install bundles ----------
+# ---------- invite yes ----------
 # accept-invite: what a fresh session started by the person's yes runs (in a session with no spend limit,
 # since Blob can't make an automation under one): setup with the relay, then join (H3)
 cmd_accept_invite() {
@@ -958,59 +965,7 @@ cmd_accept_invite() {
       else "joined, but setup did not finish (the relay needs a session with no spend limit). Tell your person in one line: To finish Blob Comm setup, start a new chat with me and say: set up the Blob Comm relay." end)}'
 }
 
-BUNDLE_TABLE="blobcom_bundle"
-cmd_export_bundle() { # this plugin's files from its repository on main into the private table blobcom_bundle
-  local repo; repo=$(bp listRepositories '{"kind":"plugin"}' | jq -r '[(if type=="array" then .[] else (.repositories // [])[] end) | select(.name=="blob-com")] | first | (.id // .repositoryId // empty)')
-  [ -n "$repo" ] || die "export-bundle: no blob-com plugin repository on this account"
-  local info; info=$(bp getRepository "$(jq -nc --arg r "$repo" '{repositoryId:$r}')") || die "getRepository failed"
-  local rev; rev=$(echo "$info" | jq -r .revision)
-  if ! bp listTables '{}' | jq -e --arg n "$BUNDLE_TABLE" '.tables[]? | select(.name==$n)' >/dev/null; then
-    bp defineTable "$(jq -nc --arg n "$BUNDLE_TABLE" '{table:{name:$n, title:"Blob Comm · Bundle", description:"The blob-com plugin files, to install it without GitHub (blobcom.sh install-bundle). Private until you share it.", fields:[{name:"path",type:"text"},{name:"text",type:"longtext"},{name:"executable",type:"boolean"},{name:"revision",type:"text"}]}, section:"private"}')" >/dev/null || die "defineTable $BUNDLE_TABLE failed"
-  fi
-  local n=0 tf="/tmp/blobcom.$$.bundle.json"
-  # only what the plugin needs (no tests or screenshots, which aren't text)
-  info=$(echo "$info" | jq -c '.paths |= map(select(test("^(\\.claude-plugin/|skills/|mods/)") or . == "mods.json" or . == "README.md" or . == "SPEC.md"))')
-  for path in $(echo "$info" | jq -r '.paths[]'); do
-    bp readRepositoryFile "$(jq -nc --arg r "$repo" --arg p "$path" '{repositoryId:$r, path:$p}')" > "$tf.in" || die "read $path failed"
-    local ex=false; case "$path" in *.sh) ex=true;; esac
-    jq -c --arg p "$path" --argjson ex $ex --arg rev "$rev" '{changes:[{op:"upsert", table:"blobcom_bundle", key:"path", values:{path:$p, text:(.text // ""), executable:$ex, revision:$rev}}]}' "$tf.in" > "$tf"
-    "$BLOB" platform writeRecords --json "@$tf" >/dev/null || die "bundle write of $path failed"
-    n=$((n+1))
-  done
-  rm -f "$tf" "$tf.in"
-  # drop files no longer in the plugin
-  local old; old=$(bp readTable '{"table":"blobcom_bundle","cols":"path","limit":500}' | jq -c --argjson keep "$(echo "$info" | jq -c .paths)" '[.records[]? | . as $r | select(($keep | index($r.path)) == null) | {op:"delete", table:"blobcom_bundle", id}]')
-  [ -n "$old" ] || old='[]'
-  [ "$(echo "$old" | jq length)" -gt 0 ] && wr "$old" >/dev/null
-  local tid; tid=$(bp listTables '{}' | jq -r --arg n "$BUNDLE_TABLE" '.tables[]? | select(.name==$n) | .id')
-  jq -nc --arg t "$tid" --arg r "$rev" --argjson n $n --argjson d "$(echo "$old" | jq length)" '{bundle_table:$t, revision:$r, files:$n, removed:$d, note:"private: share it (Can view) only with someone who asked for Blob Comm"}'
-}
 
-cmd_install_bundle() { # make a plugin repository from a bundle table (one shared with you, by id)
-  local tid=$1; shift; local name="blob-com" disabled=0
-  while [ $# -gt 0 ]; do case "$1" in --name) name=$2; shift 2;; --disabled) disabled=1; shift;; *) shift;; esac; done
-  is_chat_id "$tid" || die "install-bundle: give the bundle table's id (t_…)"
-  local rows; rows=$(bp readTable "$(jq -nc --arg t "$tid" '{table:$t, limit:500}')" | jq -c '[.records[]? | {path, text, executable}]') || die "can't read bundle $tid"
-  [ "$(echo "$rows" | jq 'map(select(.path == ".claude-plugin/plugin.json")) | length')" = "1" ] || die "install-bundle: $tid has no .claude-plugin/plugin.json"
-  bp listRepositories '{"kind":"plugin"}' | jq -e --arg n "$name" '[(if type=="array" then .[] else (.repositories // [])[] end) | select(.name==$n)] | length > 0' >/dev/null 2>&1 && die "install-bundle: you already have a plugin named $name"
-  local repo; repo=$(bp createRepository "$(jq -nc --arg n "$name" '{name:$n, kind:"plugin", owner:"you"}')" | jq -r .id) || die "createRepository failed"
-  [ -n "$repo" ] && [ "$repo" != "null" ] || die "createRepository gave no id"
-  if [ $disabled = 1 ]; then bp setInstalledEnabled "$(jq -nc --arg n "$name" '{kind:"plugin", id:$n, enabled:false, owner:"you"}')" >/dev/null || log "couldn't turn $name off"; fi
-  local n; n=$(echo "$rows" | jq length); local k=0 rev="" tf="/tmp/blobcom.$$.install.json"
-  echo "$rows" > "$tf.rows"
-  while [ $k -lt "$n" ]; do
-    if [ "$(jq -r ".[$k].executable" "$tf.rows")" = "true" ]; then
-      local b64; b64=$(jq -r ".[$k].text | @base64" "$tf.rows")
-      printf '%s' "$b64" | jq -Rc --arg r "$repo" --arg p "$(jq -r ".[$k].path" "$tf.rows")" '{repositoryId:$r, changes:[{kind:"bytes", path:$p, base64:., executable:true}]}' > "$tf"
-    else
-      jq -c --arg r "$repo" ".[$k] | {repositoryId:\$r, changes:[{kind:\"write\", path:.path, text:.text}]}" "$tf.rows" > "$tf"
-    fi
-    rev=$("$BLOB" platform writeRepositoryFiles --json "@$tf" | jq -r .revision) || die "writeRepositoryFiles failed"
-    k=$((k+1))
-  done
-  rm -f "$tf" "$tf.rows"
-  jq -nc --arg r "$repo" --arg n "$name" --arg v "$rev" --argjson f "$n" --argjson d $disabled '{repositoryId:$r, name:$n, revision:$v, files:$f, enabled:($d == 0), next:"run blobcom.sh setup --relay from a chat with your Blob (no spend limit)"}'
-}
 
 # ---------- notifications ----------
 cmd_alert_ok() {
@@ -1066,8 +1021,6 @@ main() {
     context) [ $# -ge 1 ] || die "context <chat_id> [--last 30]"; cmd_context "$@";;
     digest) cmd_digest;;
     accept-invite) [ $# -ge 1 ] || die "accept-invite <chat_id> [--from E]"; cmd_accept_invite "$@";;
-    export-bundle) cmd_export_bundle;;
-    install-bundle) [ $# -ge 1 ] || die "install-bundle <table_id> [--name blob-com] [--disabled]"; cmd_install_bundle "$@";;
     source) cmd_source;;
     jqlib) printf '%s' "$JQLIB";;
     *) die "unknown command $c";;
