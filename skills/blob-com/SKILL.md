@@ -85,8 +85,8 @@ When your person asks for Blob Comm, or an invite arrives and they say yes to jo
 
 ## Relay run (the relay automation fired)
 
-The relay fires when a blobcom_outbox row becomes `queued`, on a `blobcom.incoming` event, and once a day
-at 18:00 (for the digest). It runs on the account's always-on Blob computer with narrow access: all
+The relay fires when a blobcom_outbox row becomes `queued`, on a `blobcom.incoming` event, and, only
+while your person chose Daily digest, once a day at 18:00. It runs on the account's always-on Blob computer with narrow access: all
 tables (read and change), reading the computer, automation, and session lists (reading sessions is
 what lets Blob deliver `blobcom.incoming` to it), and sharing pages by email. Nothing else of your
 person's (no mail, calendar, files, or repositories). Never read sessions for anything else.
@@ -97,7 +97,15 @@ person's (no mail, calendar, files, or repositories). Never read sessions for an
    outbox (refusing rows your person didn't write), recovers rows stuck more than 5 minutes, syncs the
    chat, creates invite cards, and writes the digest line.
 2. If the output has `"stop": true`, reply with exactly `NO_REPLY` and do nothing else.
-3. Otherwise handle only what's under `todo`:
+3. **Cheap first, escalate only when needed.** The relay runs on the cheapest model (Claude Haiku 5.5).
+   Do routine items yourself: anything the script already did, a simple status or lookup @Blob ask
+   ("how many messages", "what did Sam say", "when is it"), and decide items with a clear action. Hand
+   an item to the **Blob Comm worker** (Claude Sonnet 5.5) when it needs real writing or judgment:
+   drafting words your person would send, answering a question for your person, a group summary, or
+   anything ambiguous or sensitive. Hand off with one call, then reply `NO_REPLY` for that item:
+   `blob platform sendEvent --json '{"name":"blobcom.work","data":{"outbox_id":"r_…","chat_id":"t_…","kind":"tell_blob","why":"<a few words>"}}'`
+   Never hand off routine work, never hand off the same item twice, and never escalate past Sonnet.
+4. Otherwise handle only what's under `todo`:
    - **tell_blob** `{outbox_id, chat_id, ask, chat}`: your person asked you something about this chat.
      `chat` holds its last 30 rows (verified text only). Do it within your trust level using that
      context (`blobcom.sh context <chat_id> --last 60` for more). Drafts and anything needing a yes become

@@ -48,8 +48,9 @@ session are refused.
 
 ## Models, cost, and access
 
-- **Models:** the relay (sending, syncing, @Blob jobs, the digest) runs on `anthropic:claude-haiku-5-5`,
-  thinking low, named explicitly. A run that has nothing to do stops in the script before any reasoning.
+- **Models:** the relay (sending, syncing, routine @Blob asks, the digest) runs on the cheapest model,
+  `anthropic:claude-haiku-5-5`, thinking low, named explicitly. Only jobs that need real writing or
+  judgment go to the **Blob Comm worker** on `anthropic:claude-sonnet-5-5` (a `blobcom.work` event). A run that has nothing to do stops in the script before any reasoning.
   Blob Comm sets no per-session spend caps; the relay's automation has a daily budget ($2 by default).
   Two things run on your Blob's own default model, which Blob Comm can't choose: the chat that the
   pane's first-run "Set up with my Blob" opens, and the session your yes to an invite starts (plus,
