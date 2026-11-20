@@ -510,7 +510,7 @@ cmd_sync() {
       # mentions: "<email>" pings that person; "blob:<email>" or "all-blobs" hands the row to that Blob
       pings_me:((($row.mentions // "") | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$";""))) as $ms | ($ms | index($me|ascii_downcase)) != null),
       addresses_me:((($row.mentions // "") | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$";""))) as $ms | ($ms | index("blob:" + ($me|ascii_downcase))) != null or ($ms | index("all-blobs")) != null)
-        or ($bn != "" and (($row.text // "") | ascii_downcase | gsub("[^a-z0-9 ]";"")) | contains($bn | ascii_downcase | gsub("[^a-z0-9 ]";""))))}]')
+        or (($bn | ascii_downcase | gsub("[\u0027\u2019]";"") | gsub("[^a-z0-9]+";" ") | gsub("^ +| +$";"")) as $b | $b != "" and ((" " + (($row.text // "") | ascii_downcase | gsub("[\u0027\u2019]";"") | gsub("[^a-z0-9]+";" ")) + " ") | contains(" " + $b + " "))))}]')
     i=$((i+1))
   done
   # rows changed or deleted after they were mirrored (append-only is a convention; Can edit allows both) (M11)
@@ -915,7 +915,6 @@ cmd_notify() {
     needs_you_alerts:($m=="needs_you" or ($m=="digest" and $t == 0))}'
 }
 
-# one relay run: everything the script can do without a model; the agent acts only on "todo" (H4)
 # once a day, no model: is a newer Blob Comm out than this copy? Says so once per new version.
 check_update() {
   local dir="$HOME/.blobcom"; mkdir -p "$dir" 2>/dev/null || return 0
@@ -927,11 +926,12 @@ check_update() {
   local latest; latest=$(curl -fsS -m 8 "https://raw.githubusercontent.com/${BLOBCOM_SOURCE#github:}/main/skills/blob-com/scripts/blobcom.sh" 2>/dev/null | sed -n 's/^VERSION="\([0-9]*\)".*/\1/p' | head -1)
   [ -n "$latest" ] && [ "$latest" -gt "${VERSION%%[!0-9]*}" ] 2>/dev/null || return 0
   [ -f "$dir/told-$latest" ] && return 0
-  [ "$(cmd_alert_ok)" = "yes" ] || { rm -f "$dir/checked-$today"; return 0; }   # try again after quiet hours
+  case "$(cmd_alert_ok)" in yes|digest) ;; *) return 0;; esac   # not now (off, quiet hours): asks again tomorrow
   : > "$dir/told-$latest"
   echo "Blob Comm has an update (version $latest; you have $VERSION). To get it, tell your Blob: update Blob Comm."
 }
 
+# one relay run: everything the script can do without a model; the agent acts only on "todo" (H4)
 cmd_relay() {
   local chat="" type="message" from="" digest=0
   while [ $# -gt 0 ]; do case "$1" in --chat) chat=$2; shift 2;; --type) type=$2; shift 2;; --from) from=$2; shift 2;; --digest) digest=1; shift;; *) shift;; esac; done

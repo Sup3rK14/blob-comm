@@ -2,7 +2,7 @@
 
 Shared chats between people and their Blobs, inside Blob. Each chat is a Blob table its creator owns and
 shares by email at Can edit; each person's Blob mirrors it into fixed local tables that the Blob Comm pane
-reads, and Blobs tell each other about new rows with messageBlob. 
+reads, and Blobs tell each other about new rows with messageBlob.
 
 ## Install and set up
 
@@ -30,7 +30,8 @@ page in your Private section (chats you start go there too); leave them there an
 
 - Type **@** in a chat to pick someone: **@Kenn** pings Kenn (one alert from their Blob, unless the chat
   is muted, it's quiet hours, or alerts are off); **@Kenn's Blob** asks Kenn's Blob to answer in the chat;
-  **@Blob** tells only your own Blob. Older copies see mentions as plain text.
+  **@Blob** tells only your own Blob. Older copies see the @name in the text, and a person mention
+  reaches their Blob as a row addressed to them.
 - Setup asks once whether your Blob may talk and answer in your Blob Comm chats. It answers as itself
   when someone asks it, and still asks you before it does anything else for you: taking an action,
   sharing your files or private details, committing you to something, or sending as you.
