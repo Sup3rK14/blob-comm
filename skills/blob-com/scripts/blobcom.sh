@@ -296,10 +296,10 @@ ensure_relay() {
   existing=$(bp listAutomations '{}' | jq -c --arg id "$RELAY_ID" '.automations[]? | select(.id==$id)')
   body=$(jq -nc --arg id "$RELAY_ID" --arg name "$RELAY_NAME" --arg place "$place" --arg msg "$(relay_message)" --arg tz "$tz" --arg dg "$wantdg" --argjson acc "$RELAY_ACCESS" '{
     id:$id, name:$name, oneAtATime:true, message:$msg,
-    triggers:[
+    triggers:([
       {id:"outbox", kind:"event", provider:"table", table:"blobcom_outbox", when:"matches", where:"status=queued"},
       {id:"incoming", kind:"event", provider:"sent", events:["blobcom.incoming"]}
-    ] + (if $dg == "yes" then [{id:"digest", kind:"cron", cron:"0 18 * * *", timezone:$tz}] else [] end),
+    ] + (if $dg == "yes" then [{id:"digest", kind:"cron", cron:"0 18 * * *", timezone:$tz}] else [] end)),
     target:{kind:"new", start:{place:{kind:"computer", computerId:$place}, selection:{model:"anthropic:claude-haiku-5-5", thinking:"low"}}, access:$acc},
     notifications:[{id:"finish", kind:"app", on:"finish"}, {id:"failure", kind:"app", on:"failure"}]
   }')
