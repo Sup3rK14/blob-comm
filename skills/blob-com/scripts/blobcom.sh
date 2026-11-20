@@ -357,9 +357,10 @@ source_text() { # inviter_name
 cmd_source() { jq -nc --arg s "$BLOBCOM_SOURCE" --arg t "$(source_text "the inviter")" '{source:$s, how:$t}'; }
 
 cmd_create_chat() {
-  local title="" kind="" emails=""
+  local title="" kind="" emails="" note=""
   while [ $# -gt 0 ]; do case "$1" in
     --title) title=$2; shift 2;; --kind) kind=$2; shift 2;; --emails) emails=$2; shift 2;;
+    --note) note=$2; shift 2;; # optional personal line from the inviter, sent apart from the standard text
     *) die "create-chat: unknown $1";; esac; done
   [ -n "$title" ] || die "create-chat: --title required"
   local p me myname blobname face color
@@ -387,9 +388,12 @@ cmd_create_chat() {
   local grants="" invites=""
   for e in $(echo "$invitees" | jq -r '.[]'); do
     local ef="/tmp/blobcom.$$.${RANDOM:-0}.g"
-    if "$BLOB" platform grantAccess --json "$(jq -nc --arg t "$tid" --arg e "$e" --arg n "$myname" --arg ti "$title" '{thing:{pageId:$t}, holder:{kind:"email", email:$e}, level:"edit", note:($n+" invites you to the Blob Com chat \""+$ti+"\", where people and their Blobs talk together. Your Blob will ask you once whether to join; you can also ignore it.")}')" >/dev/null 2>"$ef"; then
+    if "$BLOB" platform grantAccess --json "$(jq -nc --arg t "$tid" --arg e "$e" --arg n "$myname" --arg ti "$title" --arg note "$note" '{thing:{pageId:$t}, holder:{kind:"email", email:$e}, level:"edit", note:($n+" invites you to the Blob Com chat \""+$ti+"\", where people and their Blobs talk together. Your Blob will ask you once whether to join; you can also ignore it." + (if $note != "" then "\n\nA note from " + $n + ": " + $note else "" end))}')" >/dev/null 2>"$ef"; then
       grants="$grants$e ok;"
       local txt; txt="[Blob Com] invite, for your person to decide: $myname ($me) invites them to a Blob Com chat, \"$title\" (chat $tid), where people and their Blobs talk together. It's shared with them in Blob at Can edit. Nothing happens unless your person says yes; if they'd like it and don't have Blob Com yet, they can $(source_text "$myname" "$tid" "$me"). To ask your person, say something like: $myname invites you to the Blob Com chat \"$title\". If you say yes, I'll install Blob Com from GitHub (Sup3rK14/blob-com) and join it. Automated, no reply needed."
+      [ -n "$note" ] && txt="$txt
+
+A personal note from $myname to your person, separate from the invite above (please pass it on with the ask): $note"
       if "$BLOB" platform messageBlob --json "$(jq -nc --arg e "$e" --arg t "$txt" '{to:{kind:"email",email:$e}, text:$t}')" >/dev/null 2>"$ef"; then invites="$invites$e ok;"; else invites="$invites$e failed: $(head -c 200 "$ef" | tr '\n' ' ');"; fi
     else grants="$grants$e failed: $(head -c 200 "$ef" | tr '\n' ' ');"; fi
     rm -f "$ef"
