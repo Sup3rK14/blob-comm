@@ -51,6 +51,9 @@ session are refused.
 - **Models:** the relay (sending, syncing, @Blob jobs, the digest) runs on `anthropic:claude-haiku-5-5`,
   thinking low, named explicitly. A run that has nothing to do stops in the script before any reasoning.
   Blob Comm sets no per-session spend caps; the relay's automation has a daily budget ($2 by default).
+  Two things run on your Blob's own default model, which Blob Comm can't choose: the chat that the
+  pane's first-run "Set up with my Blob" opens, and the session your yes to an invite starts (plus,
+  on the receiving side, whichever of your automations takes other Blobs' messages, often "Anyone else").
 - **Relay access** reads all of your tables and your sessions (sessions-read is what makes Blob deliver
   `blobcom.incoming`). Narrow it further if Blob adds per-table grants or a way to hear events without
   reading sessions.

@@ -885,7 +885,11 @@ cmd_notify() {
     ensure_relay "" >/dev/null 2>&1 || true
     trig=$(bp listAutomations '{}' | jq -r --arg id "$RELAY_ID" '[.automations[]? | select(.id==$id) | .triggers[]? | select(.kind=="cron")] | length')
   fi
-  jq -nc --arg m "$mode" --argjson t "${trig:-0}" '{notify:$m, digest:(if $m=="digest" then (if $t > 0 then "on: the relay writes one summary at 18:00" else "needs setup --relay to add the daily trigger" end) else "off" end), needs_you_alerts:($m=="needs_you")}'
+  # say exactly what's in force: a digest without its trigger keeps needs-you alerts on; a leftover trigger is reported
+  jq -nc --arg m "$mode" --argjson t "${trig:-0}" '{notify:$m,
+    digest:(if $m=="digest" then (if $t > 0 then "on: the relay writes one summary at 18:00" else "not on yet: say \"set up the Blob Comm relay\" in a chat with your Blob to add the daily trigger; needs-you alerts stay on until then" end)
+            else (if $t > 0 then "off, but the daily trigger is still there: say \"set up the Blob Comm relay\" to remove it (each 18:00 run stops at once)" else "off" end) end),
+    needs_you_alerts:($m=="needs_you" or ($m=="digest" and $t == 0))}'
 }
 
 # one relay run: everything the script can do without a model; the agent acts only on "todo" (H4)
@@ -905,8 +909,8 @@ cmd_relay() {
 }
 
 # ---------- invite yes, install bundles ----------
-# accept-invite: what a fresh session started by the person's yes runs FIRST, before it sets its own spend
-# limit (an automation can't be made under one): setup with the relay, then join (H3)
+# accept-invite: what a fresh session started by the person's yes runs (in a session with no spend limit,
+# since Blob can't make an automation under one): setup with the relay, then join (H3)
 cmd_accept_invite() {
   local chat_id=$1; shift; local from="" name="" email="" tzn=""
   while [ $# -gt 0 ]; do case "$1" in --from) from=$2; shift 2;; --name) name=$2; shift 2;; --email) email=$2; shift 2;; --timezone) tzn=$2; shift 2;; *) shift;; esac; done
@@ -981,7 +985,10 @@ cmd_alert_ok() {
   p=$(profile)
   local mode; mode=$(echo "$p" | jq -r '.notify // "needs_you"')
   [ "$mode" = "off" ] && { echo "no:notify off"; return 0; }
-  [ "$mode" = "digest" ] && { echo "digest"; return 0; }
+  if [ "$mode" = "digest" ]; then # only while the daily trigger exists; otherwise alerts stay on
+    local dt; dt=$(bp listAutomations '{}' 2>/dev/null | jq -r --arg id "$RELAY_ID" '[.automations[]? | select(.id==$id) | .triggers[]? | select(.kind=="cron")] | length')
+    [ "${dt:-0}" != "0" ] && { echo "digest"; return 0; }
+  fi
   if [ -n "$chat_id" ]; then
     [ "$(chat_row "$chat_id" | jq -r '.muted // false')" = "true" ] && { echo "no:chat muted"; return 0; }
   fi

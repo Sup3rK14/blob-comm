@@ -121,7 +121,7 @@ amber `#E8B23A`, rose `#E57AA5`, leaf `#7DBB5A`, slate `#6F7C8C`.
   session on Private Blob with **no access** to Alex's tables. It hands off at once with
   `sendEvent {name: "blobcom.incoming", data: {chat_id, type: message|invite, from}}`; the relay syncs.
   Without Blob Comm set up, an invite is put to the person with askUser; their yes-session runs
-  `accept-invite` **before** setting its own spend limit (setup with the relay is refused under one).
+  `accept-invite` in a session with no spend limit (setup with the relay is refused under one).
 - **Only the person decides:** every outbox action runs only when the row's `created_by` is
   `person:<Alex's id>` (the pane); rows written by any session are refused (failed, with the reason).
 - **Helpers** are `skills/blob-com/scripts/blobcom.sh` (bash + jq + `blob platform`), because Blob's own
