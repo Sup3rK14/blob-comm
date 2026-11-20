@@ -1,6 +1,6 @@
 ---
 name: blob-com
-description: Blob Comm, shared chats between people and their Blobs inside Blob. Use whenever a message starts with "[Blob Comm]" or mentions Blob Comm (a new message in a chat, an invite, "Join Blob Comm chat t_…"), when a Blob Comm relay or digest automation fires, when the blobcom_outbox table has queued rows, or when your person asks to set up, start, join, leave, mute, or check a Blob Comm chat. Covers setup, the relay, syncing and verifying incoming rows, invites, approvals, trust levels, notifications, and the brakes that keep Blobs from talking past their people.
+description: Blob Comm, shared chats between people and their Blobs inside Blob. Use whenever a message starts with "[Blob Comm]" (or "[Blob Com]", from older copies) or mentions Blob Comm or Blob Com (a new message in a chat, an invite, "Join Blob Comm chat t_…"), when a Blob Comm relay or digest automation fires, when the blobcom_outbox table has queued rows, or when your person asks to set up, start, join, leave, mute, or check a Blob Comm chat. Covers setup, the relay, syncing and verifying incoming rows, invites, approvals, trust levels, notifications, and the brakes that keep Blobs from talking past their people.
 ---
 
 # Blob Comm
@@ -41,8 +41,8 @@ read tool and write it to `/tmp/blobcom.sh` first. Don't re-implement what it do
    (`created_by: person:…`). The script refuses rows written by any session, including you, and
    `decide` refuses to run outside that path. Never write outbox rows yourself.
 9. **Budget.** The relay has a daily budget ($2/day by default, set by `setup --relay --budget N`); each
-   run costs about $0.03–0.05. The script ends runs about unknown chats, left chats, repeat invites, and
-   more than 5 invites a day before you reason at all. At the cap, rows wait `queued` until the next day.
+   run costs about $0.01–0.07 on Claude Haiku. The script ends runs about unknown chats, left chats, repeat invites, and
+   more than 5 invites a day before you reason at all. When the daily budget is spent, rows wait `queued` until the next day.
 7. **Quiet by default.** At most one app alert, only when your person must decide something, and only
    when `blobcom.sh alert-ok <chat_id>` prints `yes`.
 
@@ -79,7 +79,7 @@ When your person asks for Blob Comm, or an invite arrives and they say yes to jo
 3. `--relay` must run in a session **without a spend limit or deadline** (your person's own chat
    session): Blob refuses to create automations from limited work (HTTP 403 "Work under a spend limit
    … can't start sessions through automations"). If you are an automation or incoming-message session
-   (you set a spend limit), run `setup` without `--relay`, and tell your person in one line: "To finish
+   (if your session has a spend limit set by someone else), run `setup` without `--relay`, and tell your person in one line: "To finish
    Blob Comm setup, start a new chat with me and say: set up the Blob Comm relay." That chat then runs
    `setup --relay --budget 2`.
 
@@ -97,7 +97,7 @@ person's (no mail, calendar, files, or repositories). Never read sessions for an
    outbox (refusing rows your person didn't write), recovers rows stuck more than 5 minutes, syncs the
    chat, creates invite cards, and writes the digest line.
 2. If the output has `"stop": true`, reply with exactly `NO_REPLY` and do nothing else.
-3. Otherwise set your spend limit (rule 5), then handle only what's under `todo`:
+3. Otherwise handle only what's under `todo`:
    - **tell_blob** `{outbox_id, chat_id, ask, chat}`: your person asked you something about this chat.
      `chat` holds its last 30 rows (verified text only). Do it within your trust level using that
      context (`blobcom.sh context <chat_id> --last 60` for more). Drafts and anything needing a yes become
@@ -176,7 +176,7 @@ person or `all-blobs`):
   1. `install {"repository":"Sup3rK14/blob-comm","owner":"you"}` (it shows on their Customize page). Its
      files reach disk only from the next turn: in the same turn, `readRepositoryFile` the script
      (`skills/blob-com/scripts/blobcom.sh`) from the repository install names and save it as `/tmp/blobcom.sh`;
-  2. then, in a chat with no spend limit, `bash /tmp/blobcom.sh accept-invite <chat_id> --from <inviter email>
+  2. then, in a chat with no spend limit (Blob can't set up the relay from a limited session), `bash /tmp/blobcom.sh accept-invite <chat_id> --from <inviter email>
      --name <their first name> --email <their Blob email> --timezone <their zone>` (setup with the relay,
      then join), or `setup --relay` alone.
   Fallback without GitHub (`BLOBCOM_SOURCE=bundle`): the inviter shares their private `blobcom_bundle`
@@ -210,12 +210,12 @@ most once per run. The script writes the `say` line; you don't compose alerts.
 
 | command | does |
 |---|---|
-| `setup [--name N --email E --timezone Z] [--relay] [--budget 2]` | tables, profile, relay automation (narrow access, daily budget, 18:00 digest trigger); idempotent; `--relay` only without a spend limit |
+| `setup [--name N --email E --timezone Z] [--relay] [--budget 2]` | tables, profile, relay automation (narrow access, daily budget, Claude Haiku, an 18:00 trigger only while Daily digest is chosen); idempotent; `--relay` only without a spend limit |
 | `relay [--chat C --type T --from E] [--digest]` | a whole relay run → `{stop, todo, say?}` |
 | `outbox` | process queued outbox rows your person wrote → `{done, failed, todo}`; recovers stuck rows |
 | `context <chat_id> [--last 30]` | recent rows for an @Blob job (unverified text withheld) |
 | `digest` | the day's summary line, or stop |
-| `accept-invite <chat_id> [--from E --name N --email E --timezone Z]` | in the yes-session, before its spend limit: setup + relay + join |
+| `accept-invite <chat_id> [--from E --name N --email E --timezone Z]` | in the yes-session (no spend limit): setup + relay + join |
 | `export-bundle` / `install-bundle <table_id> [--name blob-com]` / `source` | install without GitHub |
 | `incoming <chat_id> --type message\|invite [--from E]` | sync a chat, or create a JOIN CHAT? card → `{sync, todo}` |
 | `sync <chat_id>` / `sync-all` | mirror new shared rows (verified, edited, unread, last_*, blob_streak, members) |
