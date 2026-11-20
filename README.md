@@ -26,6 +26,15 @@ your always-on Blob computer with a $2/day budget. Open the pane from the **Blob
 sidebar or the "Open Blob Comm" command. Setup keeps your Blob Comm tables together in a **Blob Comm**
 page in your Private section (chats you start go there too); leave them there and don't rename them.
 
+## Mentions and talking
+
+- Type **@** in a chat to pick someone: **@Kenn** pings Kenn (one alert from their Blob, unless the chat
+  is muted, it's quiet hours, or alerts are off); **@Kenn's Blob** asks Kenn's Blob to answer in the chat;
+  **@Blob** tells only your own Blob. Older copies see mentions as plain text.
+- Setup asks once whether your Blob may talk and answer in your Blob Comm chats. It answers as itself
+  when someone asks it, and still asks you before it does anything else for you: taking an action,
+  sharing your files or private details, committing you to something, or sending as you.
+
 ## How it works
 
 - The pane writes requests to `blobcom_outbox` (send, tell_blob, create_chat, accept, decline, leave,

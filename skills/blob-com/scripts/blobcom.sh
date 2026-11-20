@@ -415,7 +415,7 @@ cmd_create_chat() {
     local ef="/tmp/blobcom.$$.${RANDOM:-0}.g"
     if "$BLOB" platform grantAccess --json "$(jq -nc --arg t "$tid" --arg e "$e" --arg n "$myname" --arg ti "$title" --arg note "$note" '{thing:{pageId:$t}, holder:{kind:"email", email:$e}, level:"edit", note:($n+" invites you to the Blob Comm chat \""+$ti+"\", where people and their Blobs talk together. Your Blob will ask you once whether to join; you can also ignore it." + (if $note != "" then "\n\nA note from " + $n + ": " + $note else "" end))}')" >/dev/null 2>"$ef"; then
       grants="$grants$e ok;"
-      local txt; txt="[Blob Comm] invite, for your person to decide: $myname ($me) invites them to a Blob Comm chat, \"$title\" (chat $tid), where people and their Blobs talk together. It's shared with them in Blob at Can edit. Nothing happens unless your person says yes; if they'd like it and don't have Blob Comm yet, they can $(source_text "$myname" "$tid" "$me"). To ask your person, say something like: $myname invites you to the Blob Comm chat \"$title\". If you say yes, I'll install Blob Comm from GitHub (Sup3rK14/blob-comm) and join it. Automated, no reply needed."
+      local txt; txt="[Blob Comm] invite, for your person to decide: $myname ($me) invites them to a Blob Comm chat, \"$title\" (chat $tid), where people and their Blobs talk together. It's shared with them in Blob at Can edit. Nothing happens unless your person says yes; if they'd like it and don't have Blob Comm yet, they can $(source_text "$myname" "$tid" "$me"). To ask your person, say something like: $myname invites you to the Blob Comm chat \"$title\". If you say yes, I'll install Blob Comm from GitHub (Sup3rK14/blob-comm), join it, and talk and answer in your Blob Comm chats when someone asks me; I'll still ask you before I do anything else for you, like taking an action, sharing your files or private details, committing you to something, or sending as you. That one yes also covers keeping an eye on your Blob Comm chats in the background. Automated, no reply needed."
       [ -n "$note" ] && txt="$txt
 
 A personal note from $myname to your person, separate from the invite above (please pass it on with the ask): $note"
@@ -480,6 +480,7 @@ cmd_send() {
 cmd_sync() {
   local chat_id=$1 p me chat
   p=$(profile); me=$(echo "$p" | jq -r .person_email)
+  local bn; bn=$(echo "$p" | jq -r '.blob_name // ""')
   chat=$(chat_row "$chat_id"); [ -n "$chat" ] || die "no local chat $chat_id (join it first)"
   case "$(echo "$chat" | jq -r .status)" in left|declined) jq -nc --arg c "$chat_id" '{chat_id:$c, skipped:"not syncing a chat you left or declined"}'; return 0;; esac
   local keys; keys=$(my_keys)
@@ -512,11 +513,14 @@ cmd_sync() {
         else . end)')
     local mv; mv=$(jq -nc --arg c "$chat_id" --argjson row "$row" --argjson v "$v" --arg me "$me" '(($row.author_email|ascii_downcase)==($me|ascii_downcase) and $v.verified) as $mine | {chat_id:$c, shared_id:$row.id, kind:$row.kind, author_email:$row.author_email, author_name:$row.author_name, author_kind:$row.author_kind, for_email:$row.for_email, text:$row.text, attachment:$row.attachment, at:$row.created_at, status:(if $mine then "sent" else "received" end), verified:$v.verified, edited:$v.edited}')
     changes=$(echo "$changes" | jq -c --argjson mv "$mv" '. + [{op:"upsert", table:"blobcom_messages", key:"shared_id", values:$mv}]')
-    newlist=$(echo "$newlist" | jq -c --argjson row "$row" --argjson v "$v" --arg me "$me" '. + [{shared_id:$row.id, kind:$row.kind, author_email:$row.author_email, author_name:$row.author_name, author_kind:$row.author_kind, mentions:$row.mentions, at:$row.created_at, verified:$v.verified, edited:$v.edited, why:$v.reason,
+    newlist=$(echo "$newlist" | jq -c --argjson row "$row" --argjson v "$v" --arg me "$me" --arg bn "$bn" '. + [{shared_id:$row.id, kind:$row.kind, author_email:$row.author_email, author_name:$row.author_name, author_kind:$row.author_kind, mentions:$row.mentions, at:$row.created_at, verified:$v.verified, edited:$v.edited, why:$v.reason,
       text:(if $v.verified then $row.text else null end),
       summary:(if $v.verified then null else ("an unverified row claiming to be from " + ($row.author_email // "someone") + " (" + $v.reason + "); text withheld") end),
       from_me:(($row.author_email|ascii_downcase)==($me|ascii_downcase) and $v.verified),
-      addresses_me:((($row.mentions // "") | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$";""))) as $ms | ($ms | index($me|ascii_downcase)) != null or ($ms | index("all-blobs")) != null)}]')
+      # mentions: "<email>" pings that person; "blob:<email>" or "all-blobs" hands the row to that Blob
+      pings_me:((($row.mentions // "") | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$";""))) as $ms | ($ms | index($me|ascii_downcase)) != null),
+      addresses_me:((($row.mentions // "") | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$";""))) as $ms | ($ms | index("blob:" + ($me|ascii_downcase))) != null or ($ms | index("all-blobs")) != null)
+        or ($bn != "" and (($row.text // "") | ascii_downcase | gsub("[^a-z0-9 ]";"")) | contains($bn | ascii_downcase | gsub("[^a-z0-9 ]";""))))}]')
     i=$((i+1))
   done
   # rows changed or deleted after they were mirrored (append-only is a convention; Can edit allows both) (M11)
@@ -841,7 +845,12 @@ cmd_incoming() {
       invited) jq -nc --arg c "$chat_id" '{stop:true, ignored:"already asked your person about this invite"}'; return 0;;
     esac
     local s; s=$(cmd_sync "$chat_id") || die "sync failed"
-    echo "$s" | jq -c '[.new[] | select((.from_me|not) and .verified and .addresses_me and (.kind=="text" or .kind=="request"))] as $td | {type:"message", stop:(($td|length)==0), new:(.new|length), unverified, may_blob_post, todo:$td}'
+    # a person @mention pings its person (one alert, unless muted, quiet hours, or alerts off)
+    local pk ok="no"; pk=$(echo "$s" | jq -c '[.new[] | select((.from_me|not) and .verified and .pings_me and (.kind=="text" or .kind=="request"))]')
+    [ "$(echo "$pk" | jq length)" -gt 0 ] && ok=$(cmd_alert_ok "$chat_id")
+    echo "$s" | jq -c --argjson pk "$pk" --arg ok "$ok" --arg t "$(echo "$chat" | jq -r .title)" '[.new[] | select((.from_me|not) and .verified and .addresses_me and (.kind=="text" or .kind=="request"))] as $td
+      | (if ($pk|length) > 0 and $ok == "yes" then ((($pk|last).author_name // "Someone") | split(" ") | first) + " mentioned you in Blob Comm (" + $t + "): \u201c" + ((($pk|last).text // "") | .[0:120]) + "\u201d" else null end) as $say
+      | {type:"message", stop:((($td|length)==0) and ($say == null)), new:(.new|length), unverified, may_blob_post, todo:$td} + (if $say then {say:$say} else {} end)'
     return 0
   fi
   [ "$type" = "invite" ] || { jq -nc '{stop:true, ignored:"a message about a chat you are not in"}'; return 0; }
