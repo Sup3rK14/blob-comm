@@ -911,8 +911,8 @@ cmd_accept_invite() {
   st=$(cmd_setup "${sargs[@]}" 2>&1) || st=$(jq -nc --arg e "$st" '{ok:false, error:$e}')
   local j; j=$(cmd_join "$chat_id" --from "$from") || die "join failed"
   jq -nc --argjson st "$(echo "$st" | jq -c . 2>/dev/null || jq -nc --arg e "$st" '{raw:$e}')" --argjson j "$j" '{setup:$st, join:$j,
-    next:(if ($st.ok // false) then "now set changeProcess {\"spendLimit\": 0.5} on yourself"
-      else "joined, but setup did not finish (the relay needs a session with no spend limit). Set changeProcess {\"spendLimit\": 0.5} on yourself, then tell your person in one line: To finish Blob Com setup, start a new chat with me and say: set up the Blob Com relay." end)}'
+    next:(if ($st.ok // false) then "now set changeProcess {\"spendLimit\": 1} on yourself"
+      else "joined, but setup did not finish (the relay needs a session with no spend limit). Set changeProcess {\"spendLimit\": 1} on yourself, then tell your person in one line: To finish Blob Com setup, start a new chat with me and say: set up the Blob Com relay." end)}'
 }
 
 BUNDLE_TABLE="blobcom_bundle"
