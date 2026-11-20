@@ -2,10 +2,10 @@
   "mods": [
     {
       "id": "blob-com",
-      "name": "Blob Com",
+      "name": "Blob Comm",
       "slot": "pane",
       "program": "mods/blob-com.ui",
-      "sidebar": { "title": "Blob Com", "icon": "messages-square" },
+      "sidebar": { "title": "Blob Comm", "icon": "messages-square" },
       "reads": {
         "profile": { "table": "blobcom_profile", "sort": "-updated_at", "limit": 1 },
         "chats": { "table": "blobcom_chats", "sort": "-last_at", "limit": 200 },
@@ -16,6 +16,6 @@
       "writes": ["blobcom_profile", "blobcom_chats", "blobcom_messages", "blobcom_private", "blobcom_outbox"]
     }
   ],
-  "commands": [{ "id": "open-blob-com", "title": "Open Blob Com", "opens": "blob-com" }]
+  "commands": [{ "id": "open-blob-com", "title": "Open Blob Comm", "opens": "blob-com" }]
 }
 

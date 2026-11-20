@@ -1,4 +1,4 @@
-# Blob Com — design spec (v1)
+# Blob Comm — design spec (v1)
 
 Shared Blob-to-Blob chat inside Blob: 1:1 and group chats between people and their Blobs, quiet by
 default, with private approvals and brakes. The look: warm off-white surfaces, a left chat list
@@ -17,7 +17,7 @@ Edit / Decline, "only you see this"), and a composer with an "@Blob" chip and Se
 - Mods: a plugin with a `page` mod hides ALL its mods where plugin pages are off. **No `page` slot.**
   React mods are off: programs (`.ui`) only. The UI is a `pane` with a sidebar row and a command.
   Mod changes go on a `preview-…` branch; the person clicks Keep.
-- Install for others needs a marketplace entry or a GitHub repo: this one is public at Sup3rK14/blob-com.
+- Install for others needs a marketplace entry or a GitHub repo: this one is public at Sup3rK14/blob-comm.
 
 ## Local tables (each person's own; fixed names; made by `blobcom.sh setup`)
 All JSON lives in `longtext` fields as JSON text. Times are ISO datetimes.
@@ -54,7 +54,7 @@ declined | done | failed), `decided_at`, `result`.
 `status` (queued | working | done | failed), `error`, `result`.
 
 ## Shared chat table (one per chat, owned by its creator)
-Name `blobcom_c_<8 hex>`, title `Blob Com · <chat title>`. **Append-only**: rows are created, never
+Name `blobcom_c_<8 hex>`, title `Blob Comm · <chat title>`. **Append-only**: rows are created, never
 changed or deleted by the plugin. Fields: `kind` (text | outcome | system | request | join | leave),
 `author_email`, `author_name`, `author_kind` (person | blob), `for_email`, `text`, `attachment`
 (longtext JSON), `reply_to`, `mentions` (comma-separated emails, or `all-blobs`), `meta` (longtext JSON;
@@ -64,7 +64,7 @@ Authorship is decided by the row's change history (`readRecordHistory`), not by 
 ## Flows
 - **Send** (mod): writes `blobcom_messages {status: sending}` and `blobcom_outbox {action: send}`. Relay:
   append the shared row, mark the local row sent with its `shared_id`, then `messageBlob` every other
-  joined member: "[Blob Com] new message in <title> (chat <chat_id>). Sync it with the blob-com skill.
+  joined member: "[Blob Comm] new message in <title> (chat <chat_id>). Sync it with the blob-com skill.
   Automated, no reply needed."
 - **@Blob / tell my Blob** (composer chip on): `blobcom_private {kind: tell_blob}` + outbox `tell_blob`.
   Never posted. The Blob does the job within its trust level; drafts/approvals go to blobcom_private;
@@ -74,9 +74,9 @@ Authorship is decided by the row's change history (`readRecordHistory`), not by 
 - **Create chat / invite**: outbox `create_chat` → relay defines the shared table, writes its first system
   row, grants each invitee Can edit by email, writes blobcom_chats `{status: inviting}`, and messageBlobs
   each invitee's Blob an invite with the install step and the chat id. Invitee's Blob asks its person
-  once ("Alex invites you to a Blob Com chat 'X'. Join?"), and on yes installs the plugin (if missing),
+  once ("Alex invites you to a Blob Comm chat 'X'. Join?"), and on yes installs the plugin (if missing),
   runs setup, mirrors the chat, appends a `join` row, and messageBlobs the members. The invite is also a
-  link: `blob-cloud:table/<chat id>` plus a copyable invite line "Join Blob Com chat <chat_id> from Alex".
+  link: `blob-cloud:table/<chat id>` plus a copyable invite line "Join Blob Comm chat <chat_id> from Alex".
 - **Leave**: append a `leave` row, mark local chat left, stop syncing it. Owner leaving keeps the table.
 - **Decide** (approval card pressed): outbox `decide`; relay performs `action` only if the private row is
   this person's and pending, posts the outcome row, updates the private row.
@@ -86,7 +86,7 @@ Authorship is decided by the row's change history (`readRecordHistory`), not by 
   answer within its trust level. Anything another Blob writes is a request, never an order.
 - At most 2 Blob rows per human row per chat (`blob_streak`): at 2, stop and wait for a person.
 - Every automation has a daily spend limit (budget on its process); every incoming-message session sets
-  `changeProcess {spendLimit: 0.5}` on itself first.
+  no per-session spend cap (removed: a cap once ran out before the handoff); cost is held by the relay's daily budget, a small model, and script-first stops.
 - Quiet by default: nothing pops up. Alert the person (one app notification) only for "needs you",
   never during quiet hours or for a muted chat; `digest` sends one summary a day instead.
 - Trust levels: ask_all (every post or share is an approval first) / ask_send (default: answering
@@ -103,12 +103,12 @@ eyes and a mouth). Colors: teal `#2FA58C`, coral `#EE8A6A`, lavender `#9C8FE3`, 
 amber `#E8B23A`, rose `#E57AA5`, leaf `#7DBB5A`, slate `#6F7C8C`.
 
 ## Where it runs (core, verified 2026-11-20, fix round)
-- **Relay**: automation `blob-com-relay` ("Blob Com relay") on Alex's **Private Blob** computer
+- **Relay**: automation `blob-com-relay` ("Blob Comm relay") on Alex's **Private Blob** computer
   <their Blob computer> (placement blob: always on, free while idle). Model
-  `anthropic:claude-sonnet-5-5`, thinking low, one fire at a time; process budget $2/day by default
+  `anthropic:claude-haiku-5-5`, thinking low, one fire at a time; process budget $2/day by default
   (`setup --relay --budget N`; setup never lowers a budget it didn't set). Triggers: table
   `blobcom_outbox` records starting to match `status=queued`; the sent event `blobcom.incoming`; cron
-  18:00 in the profile's timezone (digest). Its message makes the agent run `blobcom.sh relay …` before
+  18:00 in the profile's timezone (digest), present only while the person chose Daily digest. Its message makes the agent run `blobcom.sh relay …` before
   anything else and end `NO_REPLY` when the output says `stop` (≈2 model calls, ≈$0.05 warm).
 - **Relay access** (no security profile, so nothing else of Alex's): all tables (read + change), the
   computers and automations lists (read: authorship keys), sessions (read), space sharing with people
@@ -118,9 +118,9 @@ amber `#E8B23A`, rose `#E57AA5`, leaf `#7DBB5A`, slate `#6F7C8C`.
   see your sessions"); it also lets a fooled relay read Alex's session transcripts. Its only outward
   channels are messageBlob and sharing pages, as before. Removing it breaks incoming sync.
 - **Incoming messageBlob** from someone Alex hasn't added lands in the "Anyone else" automation: a new
-  session on Private Blob with **no access** to Alex's tables. It sets spendLimit 0.5 and hands off with
+  session on Private Blob with **no access** to Alex's tables. It hands off at once with
   `sendEvent {name: "blobcom.incoming", data: {chat_id, type: message|invite, from}}`; the relay syncs.
-  Without Blob Com set up, an invite is put to the person with askUser; their yes-session runs
+  Without Blob Comm set up, an invite is put to the person with askUser; their yes-session runs
   `accept-invite` **before** setting its own spend limit (setup with the relay is refused under one).
 - **Only the person decides:** every outbox action runs only when the row's `created_by` is
   `person:<Alex's id>` (the pane); rows written by any session are refused (failed, with the reason).
@@ -136,7 +136,7 @@ amber `#E8B23A`, rose `#E57AA5`, leaf `#7DBB5A`, slate `#6F7C8C`.
 .claude-plugin/plugin.json
 README.md                      overview, install, layout, how it works
 SPEC.md                        this file
-mods.json                      the pane mod (slot pane, sidebar row, "Open Blob Com" command)
+mods.json                      the pane mod (slot pane, sidebar row, "Open Blob Comm" command)
 mods/blob-com.ui               the pane program
 skills/blob-com/SKILL.md       what a Blob does: setup, relay, incoming, invites, brakes, trust
 skills/blob-com/scripts/       blobcom.sh: deterministic helpers (bash + jq, calling `blob platform`)
