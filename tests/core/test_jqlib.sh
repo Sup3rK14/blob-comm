@@ -24,26 +24,26 @@ eq "key command" "computer:abc" "$(jql -nr '"command:abc:c1"|actorkey')"
 eq "key person" "person:123" "$(jql -nr '"person:u_123"|actorkey')"
 eq "key null" "unknown" "$(jql -nr 'null|actorkey')"
 
-ME='{"email":"kai@example.com","keys":["computer:mine1","person:111"],"names":["Kai","Kai'"'"'s Blob"]}'
-ROW_KAI='{"id":"r1","kind":"text","author_email":"kai@example.com","author_kind":"person","created_by":"session:mine1:s","version":1}'
+ME='{"email":"alex@example.com","keys":["computer:mine1","person:111"],"names":["Alex","Alex'"'"'s Blob"]}'
+ROW_ALEX='{"id":"r1","kind":"text","author_email":"alex@example.com","author_kind":"person","created_by":"session:mine1:s","version":1}'
 ROW_OTHER_CLAIM='{"id":"r2","kind":"text","author_email":"ana@example.com","author_kind":"person","created_by":"session:mine1:s","version":1}'
 ROW_ANA='{"id":"r3","kind":"text","author_email":"ana@example.com","author_kind":"person","created_by":"session:anas:s","version":1}'
-ROW_SPOOF_KAI='{"id":"r4","kind":"text","author_email":"kai@example.com","author_kind":"person","created_by":"session:anas:s","version":1}'
-ROW_EDITED='{"id":"r5","kind":"text","author_email":"kai@example.com","author_kind":"person","created_by":"session:mine1:s","version":2}'
-ROW_BLOB_FOR_OTHER='{"id":"r6","kind":"text","author_email":"kai@example.com","author_kind":"blob","for_email":"ana@example.com","created_by":"session:mine1:s","version":1}'
-DIRECT='[{"email":"kai@example.com","status":"joined"},{"email":"ana@example.com","status":"joined"}]'
-GROUP='[{"email":"kai@example.com"},{"email":"ana@example.com","actors":["computer:anas"]},{"email":"bo@example.com"}]'
-v() { jql -nc --argjson row "$1" --argjson ev "${3:-[]}" --argjson me "$ME" --argjson m "$2" --arg k "${5:-direct}" '{row:$row, events:$ev, me:$me, members:$m, owner:"kai@example.com", kind:$k} | verify | '"${4:-.verified}"; }
+ROW_SPOOF_ALEX='{"id":"r4","kind":"text","author_email":"alex@example.com","author_kind":"person","created_by":"session:anas:s","version":1}'
+ROW_EDITED='{"id":"r5","kind":"text","author_email":"alex@example.com","author_kind":"person","created_by":"session:mine1:s","version":2}'
+ROW_BLOB_FOR_OTHER='{"id":"r6","kind":"text","author_email":"alex@example.com","author_kind":"blob","for_email":"ana@example.com","created_by":"session:mine1:s","version":1}'
+DIRECT='[{"email":"alex@example.com","status":"joined"},{"email":"ana@example.com","status":"joined"}]'
+GROUP='[{"email":"alex@example.com"},{"email":"ana@example.com","actors":["computer:anas"]},{"email":"bo@example.com"}]'
+v() { jql -nc --argjson row "$1" --argjson ev "${3:-[]}" --argjson me "$ME" --argjson m "$2" --arg k "${5:-direct}" '{row:$row, events:$ev, me:$me, members:$m, owner:"alex@example.com", kind:$k} | verify | '"${4:-.verified}"; }
 vg() { v "$1" "$2" "${3:-[]}" "${4:-.verified}" group; }
 
-eq "mine, my email -> verified" true "$(v "$ROW_KAI" "$DIRECT")"
+eq "mine, my email -> verified" true "$(v "$ROW_ALEX" "$DIRECT")"
 eq "mine, other's email -> unverified" false "$(v "$ROW_OTHER_CLAIM" "$DIRECT")"
 eq "other account in direct -> verified" true "$(v "$ROW_ANA" "$DIRECT")"
 eq "direct chat needs no pin" null "$(v "$ROW_ANA" "$DIRECT" '[]' .pin)"
-eq "other account claiming me -> unverified" false "$(v "$ROW_SPOOF_KAI" "$DIRECT")"
+eq "other account claiming me -> unverified" false "$(v "$ROW_SPOOF_ALEX" "$DIRECT")"
 eq "edited flag from version" true "$(v "$ROW_EDITED" "$DIRECT" '[]' .edited)"
-eq "edited flag from history" true "$(v "$ROW_KAI" "$DIRECT" '[{"op":"create","by":"session:mine1:s"},{"op":"change","by":"session:mine1:s"}]' .edited)"
-eq "history beats created_by" false "$(v "$ROW_KAI" "$DIRECT" '[{"op":"create","by":"session:anas:s"}]')"
+eq "edited flag from history" true "$(v "$ROW_ALEX" "$DIRECT" '[{"op":"create","by":"session:mine1:s"},{"op":"change","by":"session:mine1:s"}]' .edited)"
+eq "history beats created_by" false "$(v "$ROW_ALEX" "$DIRECT" '[{"op":"create","by":"session:anas:s"}]')"
 eq "my blob for someone else -> unverified" false "$(v "$ROW_BLOB_FOR_OTHER" "$DIRECT")"
 eq "group: pinned device ok" true "$(vg "$ROW_ANA" "$GROUP")"
 ROW_BO_FROM_ANA='{"id":"r7","kind":"text","author_email":"bo@example.com","author_kind":"person","created_by":"session:anas:s","version":1}'
@@ -56,7 +56,7 @@ ROW_STRANGER='{"id":"r10","kind":"join","author_email":"eve@example.com","author
 eq "join from non-member -> unverified" false "$(vg "$ROW_STRANGER" "$GROUP")"
 
 # M3: labels must fit the author
-NAMED='[{"email":"kai@example.com"},{"email":"ana@example.com","name":"Ana","blob_name":"Ana'"'"'s Blob"}]'
+NAMED='[{"email":"alex@example.com"},{"email":"ana@example.com","name":"Ana","blob_name":"Ana'"'"'s Blob"}]'
 ROW_ANA_BLOB_FOR_SAM='{"id":"m1","kind":"text","author_email":"ana@example.com","author_name":"Sam'"'"'s Blob","author_kind":"blob","for_email":"sam@example.com","created_by":"session:anas:s","version":1}'
 eq "M3 blob row for someone else -> unverified" false "$(v "$ROW_ANA_BLOB_FOR_SAM" "$NAMED")"
 ROW_ANA_WRONGNAME='{"id":"m2","kind":"text","author_email":"ana@example.com","author_name":"Sam","author_kind":"person","created_by":"session:anas:s","version":1}'
@@ -67,10 +67,10 @@ ROW_OUT_PERSON='{"id":"m4","kind":"outcome","author_email":"ana@example.com","au
 eq "M3 outcome from a person label -> unverified" false "$(v "$ROW_OUT_PERSON" "$NAMED")"
 ROW_SYS_ANA='{"id":"m5","kind":"system","author_email":"ana@example.com","author_name":"Ana","author_kind":"person","created_by":"session:anas:s","version":1}'
 eq "M3 system row not from owner -> unverified" false "$(v "$ROW_SYS_ANA" "$NAMED")"
-ROW_SYS_KAI_EDITED='{"id":"m6","kind":"system","author_email":"kai@example.com","author_name":"Kai","author_kind":"person","created_by":"session:mine1:s","version":2}'
-eq "M11 changed system row -> unverified" false "$(v "$ROW_SYS_KAI_EDITED" "$NAMED")"
-ROW_KAI_WRONGNAME='{"id":"m7","kind":"text","author_email":"kai@example.com","author_name":"Sam","author_kind":"person","created_by":"session:mine1:s","version":1}'
-eq "M3 my account with another name -> unverified" false "$(v "$ROW_KAI_WRONGNAME" "$NAMED")"
+ROW_SYS_ALEX_EDITED='{"id":"m6","kind":"system","author_email":"alex@example.com","author_name":"Alex","author_kind":"person","created_by":"session:mine1:s","version":2}'
+eq "M11 changed system row -> unverified" false "$(v "$ROW_SYS_ALEX_EDITED" "$NAMED")"
+ROW_ALEX_WRONGNAME='{"id":"m7","kind":"text","author_email":"alex@example.com","author_name":"Sam","author_kind":"person","created_by":"session:mine1:s","version":1}'
+eq "M3 my account with another name -> unverified" false "$(v "$ROW_ALEX_WRONGNAME" "$NAMED")"
 # M4: in groups, pin only from the member's own join row
 ROW_BO_TEXT='{"id":"m8","kind":"text","author_email":"bo@example.com","author_kind":"person","created_by":"session:bos:s","version":1}'
 eq "M4 group text before any join -> unverified" false "$(vg "$ROW_BO_TEXT" "$GROUP")"

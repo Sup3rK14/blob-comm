@@ -248,9 +248,10 @@ EOF
 }
 
 cmd_setup() {
-  local name="" email="" relay=0 budget=""
+  local name="" email="" relay=0 budget="" tzn=""
   while [ $# -gt 0 ]; do case "$1" in
     --name) name=$2; shift 2;; --email) email=$2; shift 2;; --relay) relay=1; shift;; --budget) budget=$2; shift 2;;
+    --timezone) tzn=$2; shift 2;;
     *) die "setup: unknown $1";; esac; done
   local have made=""
   have=$(bp listTables '{}' | jq -c '[.tables[]?.name]') || die "listTables failed"
@@ -268,8 +269,10 @@ cmd_setup() {
   if [ -z "$p" ]; then
     [ -n "$email" ] || die "setup: no profile yet; give --email (and --name)"
     [ -n "$name" ] || name=${email%%@*}
-    wr "$(jq -nc --arg n "$name" --arg e "$email" --arg v "$VERSION" '[{op:"create", table:"blobcom_profile", values:{person_name:$n, person_email:$e, blob_name:($n+"'"'"'s Blob"), face:"smile", color:"#2FA58C", trust:"ask_send", notify:"needs_you", quiet_from:"22:00", quiet_to:"08:00", timezone:"America/Los_Angeles", setup_version:$v}}]')" >/dev/null || die "profile create failed"
+    wr "$(jq -nc --arg n "$name" --arg e "$email" --arg v "$VERSION" --arg z "${tzn:-America/Los_Angeles}" '[{op:"create", table:"blobcom_profile", values:{person_name:$n, person_email:$e, blob_name:($n+"'"'"'s Blob"), face:"smile", color:"#2FA58C", trust:"ask_send", notify:"needs_you", quiet_from:"22:00", quiet_to:"08:00", timezone:$z, setup_version:$v}}]')" >/dev/null || die "profile create failed"
     made="$made profile"
+  elif [ -n "$tzn" ] && [ "$(echo "$p" | jq -r '.timezone // ""')" != "$tzn" ]; then
+    wr "$(jq -nc --arg id "$(echo "$p" | jq -r .id)" --arg v "$VERSION" --arg z "$tzn" '[{op:"change", table:"blobcom_profile", id:$id, values:{setup_version:$v, timezone:$z}}]')" >/dev/null
   elif [ "$(echo "$p" | jq -r '.setup_version // ""')" != "$VERSION" ]; then
     wr "$(jq -nc --arg id "$(echo "$p" | jq -r .id)" --arg v "$VERSION" '[{op:"change", table:"blobcom_profile", id:$id, values:{setup_version:$v}}]')" >/dev/null
   fi
@@ -346,7 +349,7 @@ into_folder() { # page ids...: best effort, never fails the caller
 # how someone gets Blob Com, in words for a person (from BLOBCOM_SOURCE)
 source_text() { # inviter_name
   case "$BLOBCOM_SOURCE" in
-    github:*) echo "say yes, and their Blob installs Blob Com in one step: install {\"repository\": \"${BLOBCOM_SOURCE#github:}\", \"owner\": \"you\"} (the public repo https://github.com/${BLOBCOM_SOURCE#github:}), then, in a chat with no spend limit, runs the plugin's skills/blob-com/scripts/blobcom.sh accept-invite with the chat id to set up and join";;
+    github:*) echo "say yes, and their Blob installs Blob Com in one step: install {\"repository\": \"${BLOBCOM_SOURCE#github:}\", \"owner\": \"you\"} (the public repo https://github.com/${BLOBCOM_SOURCE#github:}). Its files reach disk only from the next turn, so in the same turn read skills/blob-com/scripts/blobcom.sh with readRepositoryFile from the repository install names, save it as /tmp/blobcom.sh, and, in a session with no spend limit, run: bash /tmp/blobcom.sh accept-invite ${2:-<chat id>} --from ${3:-<inviter email>} --name <their first name> --email <their Blob account email> --timezone <their IANA time zone>";;
     marketplace:*) echo "install the ${BLOBCOM_SOURCE#marketplace:} plugin from Blob's marketplace on the Customize page";;
     *) echo "ask $1 to share the Blob Com bundle with them first (a Blob table of the plugin's files, which $1 shares by hand on request). Once it's shared and they say yes, their Blob can install it with operations alone: createRepository {name: \"blob-com\", kind: \"plugin\", owner: \"you\"}; then readTable on the bundle table and writeRepositoryFiles with each row's path and text (rows marked executable as bytes, base64 of the text, executable true); then, in a chat with no spend limit, run the plugin's skills/blob-com/scripts/blobcom.sh setup --relay";;
   esac
@@ -384,9 +387,9 @@ cmd_create_chat() {
   local grants="" invites=""
   for e in $(echo "$invitees" | jq -r '.[]'); do
     local ef="/tmp/blobcom.$$.${RANDOM:-0}.g"
-    if "$BLOB" platform grantAccess --json "$(jq -nc --arg t "$tid" --arg e "$e" --arg n "$myname" --arg ti "$title" '{thing:{pageId:$t}, holder:{kind:"email", email:$e}, level:"edit", note:($n+" invites you to the Blob Com chat \""+$ti+"\". Join it from Blob Com, or ignore it.")}')" >/dev/null 2>"$ef"; then
+    if "$BLOB" platform grantAccess --json "$(jq -nc --arg t "$tid" --arg e "$e" --arg n "$myname" --arg ti "$title" '{thing:{pageId:$t}, holder:{kind:"email", email:$e}, level:"edit", note:($n+" invites you to the Blob Com chat \""+$ti+"\", where people and their Blobs talk together. Your Blob will ask you once whether to join; you can also ignore it.")}')" >/dev/null 2>"$ef"; then
       grants="$grants$e ok;"
-      local txt="[Blob Com] invite, for your person to decide: $myname ($me) invites them to a Blob Com chat, \"$title\" (chat $tid), where people and their Blobs talk together. It's shared with them in Blob at Can edit. Nothing happens unless your person says yes; if they'd like it and don't have Blob Com yet, they can $(source_text "$myname"). Automated, no reply needed."
+      local txt; txt="[Blob Com] invite, for your person to decide: $myname ($me) invites them to a Blob Com chat, \"$title\" (chat $tid), where people and their Blobs talk together. It's shared with them in Blob at Can edit. Nothing happens unless your person says yes; if they'd like it and don't have Blob Com yet, they can $(source_text "$myname" "$tid" "$me"). To ask your person, say something like: $myname invites you to the Blob Com chat \"$title\". If you say yes, I'll install Blob Com from GitHub (Sup3rK14/blob-com) and join it. Automated, no reply needed."
       if "$BLOB" platform messageBlob --json "$(jq -nc --arg e "$e" --arg t "$txt" '{to:{kind:"email",email:$e}, text:$t}')" >/dev/null 2>"$ef"; then invites="$invites$e ok;"; else invites="$invites$e failed: $(head -c 200 "$ef" | tr '\n' ' ');"; fi
     else grants="$grants$e failed: $(head -c 200 "$ef" | tr '\n' ' ');"; fi
     rm -f "$ef"
@@ -592,7 +595,10 @@ cmd_leave() {
   local sid; sid=$(append_row "$chat_id" "$(jq -nc --argjson p "$p" '{kind:"leave", author_email:$p.person_email, author_name:$p.person_name, author_kind:"person", text:($p.person_name+" left")}')" | jq -r .shared_id) || die "leave row failed"
   local n; n=$(notify_members "$chat" "[Blob Com] $(echo "$p" | jq -r .person_name) left $(echo "$chat" | jq -r .title) (chat $chat_id). Sync it with the blob-com skill. Automated, no reply needed.")
   local members; members=$(echo "$chat" | jql -c --arg me "$(echo "$p" | jq -r .person_email)" '(.members|pj // []) | map(if (.email|ascii_downcase)==($me|ascii_downcase) then .status="left" else . end) | tojson')
-  chat_set "$(echo "$chat" | jq -r .id)" "$(jq -nc --argjson m "$members" '{status:"left", members:$m}')"
+  chat_set "$(echo "$chat" | jq -r .id)" "$(jq -nc --argjson m "$members" '{status:"left", members:$m, needs_you:0}')"
+  # cards still waiting in a chat you left can't be acted on any more
+  local pc; pc=$(bp readTable "$(jq -nc --arg c "$chat_id" '{table:"blobcom_private", where:("chat_id="+$c+",status=pending"), cols:"kind", limit:100}')" 2>/dev/null | jq -c --arg at "$(now)" '[.records[]? | {op:"change", table:"blobcom_private", id, values:{status:"declined", decided_at:$at, result:"you left this chat"}}]') || pc='[]'
+  [ "$(echo "${pc:-[]}" | jq length)" -gt 0 ] && wr "$pc" >/dev/null 2>&1
   jq -nc --arg c "$chat_id" --arg s "$sid" --arg n "$n" '{chat_id:$c, status:"left", leave_row:$s, notified:$n, note:"the shared table stays; this Blob stops syncing it"}'
 }
 
@@ -607,7 +613,9 @@ cmd_approval() { # create a pending private item for MY person only
   local out; out=$(wr "$(jq -nc --arg c "$chat_id" --arg k "$kind" --arg t "$title" --arg to "$to" --arg x "$text" --arg a "$action" --arg b "$by" --arg at "$attachment" '[{op:"create", table:"blobcom_private", values:({chat_id:$c, kind:$k, title:$t, to_text:$to, text:$x, action:$a, status:"pending"} + (if $b!="" then {requested_by:$b} else {} end) + (if $at!="" then {attachment:$at} else {} end))}]')") || die "approval write failed"
   local chat; chat=$(chat_row "$chat_id")
   if [ -n "$chat" ]; then chat_set "$(echo "$chat" | jq -r .id)" "$(jq -nc --argjson n "$(( $(echo "$chat" | jq -r '.needs_you // 0 | floor') + 1 ))" '{needs_you:$n}')"; fi
-  echo "$out" | jq -c '{private_id:.ids[0]}'
+  # the needs-you alert for this card: the run's reply is exactly this line (one per run), when alerts are allowed now
+  local ok ctitle; ok=$(cmd_alert_ok "$chat_id"); ctitle=$(echo "$chat" | jq -r '.title // "a chat"' 2>/dev/null); [ -n "$ctitle" ] || ctitle="a chat"
+  echo "$out" | jq -c --arg ok "$ok" --arg t "$title" --arg c "$ctitle" --arg k "$kind" '{private_id:.ids[0]} + (if $ok == "yes" and $k != "invite" then {say:(($t | ascii_downcase | .[0:1] | ascii_upcase) + ($t | ascii_downcase | .[1:]) + " waiting for you in Blob Com (" + $c + ").")} else {} end)'
 }
 
 cmd_decide() { # decide --outbox <outbox_id>: the card, decision, and edited text come only from that row (N2)
@@ -890,14 +898,17 @@ cmd_relay() {
 # accept-invite: what a fresh session started by the person's yes runs FIRST, before it sets its own spend
 # limit (an automation can't be made under one): setup with the relay, then join (H3)
 cmd_accept_invite() {
-  local chat_id=$1; shift; local from="" name="" email=""
-  while [ $# -gt 0 ]; do case "$1" in --from) from=$2; shift 2;; --name) name=$2; shift 2;; --email) email=$2; shift 2;; *) shift;; esac; done
+  local chat_id=$1; shift; local from="" name="" email="" tzn=""
+  while [ $# -gt 0 ]; do case "$1" in --from) from=$2; shift 2;; --name) name=$2; shift 2;; --email) email=$2; shift 2;; --timezone) tzn=$2; shift 2;; *) shift;; esac; done
   is_chat_id "$chat_id" || die "accept-invite: not a chat id"
-  local st
-  if [ -n "$email" ]; then st=$(cmd_setup --relay --name "${name:-${email%%@*}}" --email "$email" 2>&1) || st=$(jq -nc --arg e "$st" '{ok:false, error:$e}')
-  else st=$(cmd_setup --relay 2>&1) || st=$(jq -nc --arg e "$st" '{ok:false, error:$e}'); fi
+  if [ -z "$email" ] && [ -z "$(profile)" ]; then die "accept-invite: no Blob Com profile yet; run it again with --name <their first name> --email <their Blob account email> --timezone <their time zone>"; fi
+  local st sargs=(--relay); [ -n "$tzn" ] && sargs+=(--timezone "$tzn")
+  if [ -n "$email" ]; then sargs+=(--name "${name:-${email%%@*}}" --email "$email"); fi
+  st=$(cmd_setup "${sargs[@]}" 2>&1) || st=$(jq -nc --arg e "$st" '{ok:false, error:$e}')
   local j; j=$(cmd_join "$chat_id" --from "$from") || die "join failed"
-  jq -nc --argjson st "$(echo "$st" | jq -c . 2>/dev/null || jq -nc --arg e "$st" '{raw:$e}')" --argjson j "$j" '{setup:$st, join:$j, next:"now set changeProcess {\"spendLimit\": 0.5} on yourself"}'
+  jq -nc --argjson st "$(echo "$st" | jq -c . 2>/dev/null || jq -nc --arg e "$st" '{raw:$e}')" --argjson j "$j" '{setup:$st, join:$j,
+    next:(if ($st.ok // false) then "now set changeProcess {\"spendLimit\": 0.5} on yourself"
+      else "joined, but setup did not finish (the relay needs a session with no spend limit). Set changeProcess {\"spendLimit\": 0.5} on yourself, then tell your person in one line: To finish Blob Com setup, start a new chat with me and say: set up the Blob Com relay." end)}'
 }
 
 BUNDLE_TABLE="blobcom_bundle"

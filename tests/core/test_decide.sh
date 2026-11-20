@@ -16,7 +16,7 @@ case "$op" in
       blobcom_outbox:id=r_obperson) echo '{"records":[{"id":"r_obperson","action":"decide","created_by":"person:u_111","payload":"{\"private_id\":\"r_card\",\"decision\":\"declined\"}"}]}';;
       blobcom_outbox:id=r_obsession) echo '{"records":[{"id":"r_obsession","action":"decide","created_by":"session:c1:s1","payload":"{\"private_id\":\"r_card\",\"decision\":\"approved\"}"}]}';;
       blobcom_private:id=r_card) echo '{"records":[{"id":"r_card","version":1,"chat_id":"t_0123456789abcdef","status":"pending","title":"SEND AS YOU?","text":"hi","action":"{\"do\":\"post\",\"text\":\"hi\"}"}]}';;
-      blobcom_profile:*) echo '{"records":[{"id":"r_p","person_email":"kai@example.com","person_name":"Kai","blob_name":"Kai'"'"'s Blob"}]}';;
+      blobcom_profile:*) echo '{"records":[{"id":"r_p","person_email":"alex@example.com","person_name":"Alex","blob_name":"Alex'"'"'s Blob"}]}';;
       *) echo '{"records":[],"total":0}';;
     esac;;
   listComputers) echo '{"computers":[{"computerId":"c1"}]}';;

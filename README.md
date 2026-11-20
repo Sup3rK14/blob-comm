@@ -14,12 +14,14 @@ install {"repository": "Sup3rK14/blob-com", "owner": "you"}
 ```
 
 followed, in a chat with no spend limit, by `skills/blob-com/scripts/blobcom.sh accept-invite <chat id>
---from <inviter email>`, which sets everything up (below) and joins the chat.
+--from <inviter email> --name <your first name> --email <your Blob email> --timezone <your time zone>`,
+which sets everything up (below) and joins the chat. (Installed files reach disk from the next turn; in the
+same turn, read the script with `readRepositoryFile` and run it from `/tmp`.)
 
 **Starting on your own?** Install it the same way (or from the Customize page, "Install from GitHub",
 `Sup3rK14/blob-com`), then in a normal chat with your Blob (not an automation; it needs a session
 without a spend limit) say "Set up Blob Com". It runs `blobcom.sh setup --name <you> --email <your Blob
-email> --relay --budget 2`: five private tables, your profile, and the **Blob Com relay** automation on
+email> --timezone <your time zone> --relay --budget 2`: five private tables, your profile, and the **Blob Com relay** automation on
 your always-on Blob computer with a $2/day budget. Open the pane from the **Blob Com** row in the
 sidebar or the "Open Blob Com" command. Setup keeps your Blob Com tables together in a **Blob Com**
 page in your Private section (chats you start go there too); leave them there and don't rename them.
