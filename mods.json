@@ -1,0 +1,21 @@
+{
+  "mods": [
+    {
+      "id": "blob-com",
+      "name": "Blob Com",
+      "slot": "pane",
+      "program": "mods/blob-com.ui",
+      "sidebar": { "title": "Blob Com", "icon": "messages-square" },
+      "reads": {
+        "profile": { "table": "blobcom_profile", "sort": "-updated_at", "limit": 1 },
+        "chats": { "table": "blobcom_chats", "sort": "-last_at", "limit": 200 },
+        "messages": { "table": "blobcom_messages", "sort": "-at", "limit": 800 },
+        "private": { "table": "blobcom_private", "sort": "-created_at", "limit": 300 },
+        "outbox": { "table": "blobcom_outbox", "sort": "-created_at", "limit": 200 }
+      },
+      "writes": ["blobcom_profile", "blobcom_chats", "blobcom_messages", "blobcom_private", "blobcom_outbox"]
+    }
+  ],
+  "commands": [{ "id": "open-blob-com", "title": "Open Blob Com", "opens": "blob-com" }]
+}
+

@@ -1,0 +1,331 @@
+{@ const DBG = {} }
+{@ const W = DBG.w || ui.width || 720 }
+{@ const narrow = W < 600 }
+{@ const [profileRows] = state("profile", []) }
+{@ const [chatRows] = state("chats", []) }
+{@ const [msgRows] = state("messages", []) }
+{@ const [privRows] = state("private", []) }
+{@ const [outRows] = state("outbox", []) }
+{@ const [view, setView] = state("bc_view", DBG.view || "chats") }
+{@ const [sel, setSel] = state("bc_sel", DBG.sel || "") }
+{@ const [draft, setDraft] = state("bc_draft", DBG.draft || "") }
+{@ const [blobOn, setBlobOn] = state("bc_blob_on", !!DBG.blobOn) }
+{@ const [more, setMore] = state("bc_more", 40) }
+{@ const [confirmLeave, setConfirmLeave] = state("bc_confirm_leave", DBG.leave || "") }
+{@ const [editing, setEditing] = state("bc_editing", DBG.editing || "") }
+{@ const [editText, setEditText] = state("bc_edit_text", DBG.editText || "") }
+{@ const [ncKind, setNcKind] = state("bc_new_kind", DBG.kind || "direct") }
+{@ const [ncTitle, setNcTitle] = state("bc_new_title", "") }
+{@ const [ncEmails, setNcEmails] = state("bc_new_emails", "") }
+{@ const [ncError, setNcError] = state("bc_new_error", "") }
+{@ const [look, setLook] = state("bc_look", {}) }
+{@ const [copied, setCopied] = state("bc_copied", "") }
+{@ const [tick, setTick] = state("bc_tick", 0) }
+{@ every(30000, () => setTick((n) => n + 1)) }
+{@ const me = DBG.noProfile ? null : (profileRows[0] || null) }
+{@ const myEmail = ((me && me.person_email) || "").toLowerCase() }
+{@ const tz = (me && me.timezone) || undefined }
+{@ const pj = (s, d) => { if (s == null || s === "") return d; if (typeof s !== "string") return s; try { return JSON.parse(s); } catch (e) { return d; } } }
+{@ const C = {
+  main: {light: "#FBFAF7", dark: "#1C1B19"},
+  side: {light: "#F2EFEA", dark: "#232220"},
+  selRow: {light: "#E4DED5", dark: "#35322D"},
+  line: {light: "#E8E3DB", dark: "#36322D"},
+  lineSide: {light: "#E2DDD5", dark: "#36322D"},
+  ink: {light: "#1F1D1A", dark: "#F2EFEA"},
+  sub: {light: "#5F584F", dark: "#BDB5AA"},
+  muted: {light: "#6E675E", dark: "#9C948A"},
+  bubble: {light: "#FFFFFF", dark: "#272522"},
+  pill: {light: "#F0ECE6", dark: "#2C2925"},
+  inset: {light: "#F7F4EF", dark: "#2C2925"},
+  card: {light: "#FFFFFF", dark: "#24221F"},
+  btn: {light: "#1F1D1A", dark: "#F2EFEA"},
+  btnInk: {light: "#FFFFFF", dark: "#1F1D1A"},
+  btn2: {light: "#FFFFFF", dark: "#2C2925"},
+  btn2Line: {light: "#D9D3CA", dark: "#4A453F"},
+  alert: "#C2512F",
+  field: {light: "#DDD7CE", dark: "#3F3A34"}
+} }
+{@ const COLORS = [{n: "Teal", h: "#2FA58C"}, {n: "Coral", h: "#EE8A6A"}, {n: "Lavender", h: "#9C8FE3"}, {n: "Sky", h: "#4BA3E3"}, {n: "Amber", h: "#E8B23A"}, {n: "Rose", h: "#E57AA5"}, {n: "Leaf", h: "#7DBB5A"}, {n: "Slate", h: "#6F7C8C"}] }
+{@ const FACES = [{v: "smile", n: "Smile"}, {v: "grin", n: "Grin"}, {v: "wink", n: "Wink"}, {v: "calm", n: "Calm"}, {v: "wow", n: "Wow"}, {v: "sleepy", n: "Sleepy"}] }
+{@ const hx = (h) => { const s = String(h || "#6F7C8C").replace("#", ""); const f = s.length === 3 ? s.split("").map((c) => c + c).join("") : s.padEnd(6, "0"); return [0, 2, 4].map((i) => parseInt(f.slice(i, i + 2), 16) || 0); } }
+{@ const mix = (a, b, t) => { const x = hx(a), y = hx(b); return "#" + x.map((v, i) => Math.round(v * (1 - t) + y[i] * t).toString(16).padStart(2, "0")).join(""); } }
+{@ const rgba = (h, a) => "rgba(" + hx(h).join(",") + "," + a + ")" }
+{@ const B = {line: "1px solid rgba(120,105,90,0.2)", strong: "1px solid rgba(120,105,90,0.34)", pick: "2px solid rgba(128,118,105,0.9)"} }
+{@ const tagBg = (h) => ({light: mix(h, "#FFFFFF", 0.8), dark: mix(h, "#1C1B19", 0.7)}) }
+{@ const tagInk = (h) => ({light: mix(h, "#000000", 0.48), dark: mix(h, "#FFFFFF", 0.4)}) }
+{@ const bubBg = (h) => ({light: mix(h, "#FFFFFF", 0.9), dark: mix(h, "#1C1B19", 0.84)}) }
+{@ const bubLine = (h) => ({light: mix(h, "#FFFFFF", 0.76), dark: mix(h, "#1C1B19", 0.62)}) }
+{@ const cardLine = (h) => ({light: mix(h, "#E6DED6", 0.55), dark: mix(h, "#1C1B19", 0.45)}) }
+{@ const personFill = (h) => mix(h, "#2A2622", 0.6) }
+{@ const initials = (name) => { const w = String(name || "?").replace(/'s Blob$/, "").trim().split(/\s+/).filter(Boolean); if (!w.length) return "?"; return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase(); } }
+{@ const first = (name) => String(name || "").trim().split(/\s+/)[0] || "" }
+{@ const fmtTime = (iso) => { if (!iso) return ""; const d = new Date(iso); if (isNaN(d)) return ""; return d.toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit", timeZone: tz}); } }
+{@ const dayKey = (iso) => { const d = new Date(iso || 0); return isNaN(d) ? "" : d.toLocaleDateString("en-CA", {timeZone: tz}); } }
+{@ const todayKey = dayKey(new Date().toISOString()) }
+{@ const yestKey = dayKey(new Date(Date.now() - 86400000).toISOString()) }
+{@ const fmtWhen = (iso) => { if (!iso) return ""; const k = dayKey(iso); if (k === todayKey) return fmtTime(iso); if (k === yestKey) return "Yesterday"; const d = new Date(iso); if (Date.now() - d.getTime() < 6 * 86400000) return d.toLocaleDateString("en-US", {weekday: "short", timeZone: tz}); return d.toLocaleDateString("en-US", {month: "short", day: "numeric", timeZone: tz}); } }
+{@ const fmtDay = (iso) => { const k = dayKey(iso); if (k === todayKey) return new Date(iso).getHours() >= 18 ? "Tonight" : "Today"; if (k === yestKey) return "Yesterday"; return new Date(iso).toLocaleDateString("en-US", {weekday: "long", month: "short", day: "numeric", timeZone: tz}); } }
+{@ const hourLabel = (hm) => { const h = parseInt(String(hm || "0").split(":")[0], 10) || 0; return (h % 12 === 0 ? 12 : h % 12) + " " + (h < 12 ? "AM" : "PM"); } }
+{@ const myLook = {face: look.face || (me && me.face) || "smile", color: look.color || (me && me.color) || "#2FA58C", trust: look.trust || (me && me.trust) || "ask_send", notify: look.notify || (me && me.notify) || "needs_you", quiet_from: look.quiet_from || (me && me.quiet_from) || "22:00", quiet_to: look.quiet_to || (me && me.quiet_to) || "08:00"} }
+{@ const myName = (me && me.person_name) || "You" }
+{@ const myBlob = (me && me.blob_name) || (myName + "'s Blob") }
+{@ const bodyPath = (f) => f === "calm" ? "M20 4c6 0 9 3 11 7s4 7 3 12c-1 7-7 12-14 12S7 31 6 24s1-9 3-13 5-7 11-7z" : (f === "wow" || f === "sleepy") ? "M20 6c9 0 14.5 5 14.5 13.5 0 9-6 15.5-14.5 15.5S5.5 29 5.5 20.5 11 6 20 6z" : "M20 5c8.5 0 14 6 14 14.5S28.5 35 20 35 6 28.5 6.5 19.5C7 11 11.5 5 20 5z" }
+{@ const eyeY = (f) => (f === "calm" || f === "wow" || f === "sleepy") ? 20 : 19 }
+{@ const faceParts = (f, col) => (
+  <g>
+    <path d={bodyPath(f)} fill={col} />
+    {(f === "sleepy") ? <path d={"M13 " + eyeY(f) + "q2.5 2 5 0M22 " + eyeY(f) + "q2.5 2 5 0"} stroke="#1F1D1A" stroke-width="1.9" fill="none" stroke-linecap="round" /> : <circle cx="15.5" cy={eyeY(f)} r="2.4" fill="#1F1D1A" />}
+    {f === "wink" && <path d="M22.3 19.4q2.2-1.8 4.4 0" stroke="#1F1D1A" stroke-width="1.9" fill="none" stroke-linecap="round" />}
+    {(f !== "wink" && f !== "sleepy") && <circle cx="24.5" cy={eyeY(f)} r="2.4" fill="#1F1D1A" />}
+    {(f === "smile" || f === "wink") && <path d="M17 25q3 2.5 6 0" stroke="#1F1D1A" stroke-width="1.8" fill="none" stroke-linecap="round" />}
+    {f === "grin" && <path d="M15.5 24h9q-0.8 5-4.5 5t-4.5-5z" fill="#1F1D1A" />}
+    {f === "calm" && <path d="M16.5 26.5h7" stroke="#1F1D1A" stroke-width="1.8" stroke-linecap="round" />}
+    {f === "wow" && <circle cx="20" cy="26" r="1.9" fill="#1F1D1A" />}
+    {f === "sleepy" && <path d="M18.3 26.6h3.4" stroke="#1F1D1A" stroke-width="1.8" stroke-linecap="round" />}
+  </g>
+) }
+{@ const Face = (f, col, size) => (<Box width={size} height={size}><Diagram viewBox="0 0 40 40" height={size}>{faceParts(f, col)}</Diagram></Box>) }
+{@ const Person = (name, col, size) => (<Box width={size} height={size}><Diagram viewBox="0 0 40 40" height={size}><circle cx="20" cy="20" r="20" fill={personFill(col)} /><text x="20" y="21" fill="#FFFFFF" font-size="15" font-weight="700" text-anchor="middle" dominant-baseline="central">{initials(name)}</text></Diagram></Box>) }
+{@ const members = (c) => { const list = pj(c && c.members, []); return Array.isArray(list) ? list : []; } }
+{@ const meMember = {email: myEmail, name: myName, blob_name: myBlob, face: myLook.face, color: myLook.color, status: "joined", me: true} }
+{@ const others = (c) => members(c).filter((m) => String(m.email || "").toLowerCase() !== myEmail) }
+{@ const everyone = (c) => [meMember].concat(others(c)) }
+{@ const byEmail = (c, e) => { const k = String(e || "").toLowerCase(); if (k && k === myEmail) return meMember; return others(c).find((m) => String(m.email || "").toLowerCase() === k) || null; } }
+{@ const blobNameOf = (m) => (m && (m.blob_name || (first(m.name) + "'s Blob"))) || "Blob" }
+{@ const visibleChats = chatRows.filter((c) => c.status !== "left" && c.status !== "declined") }
+{@ const invites = visibleChats.filter((c) => c.status === "invited") }
+{@ const privInvites = privRows.filter((p) => p.kind === "invite" && p.status === "pending") }
+{@ const inviteCards = invites.filter((c) => !privInvites.some((p) => p.chat_id === c.chat_id)).map((c) => { const by = byEmail(c, c.invited_by) || {name: c.invited_by}; return {key: c.id, chat_id: c.chat_id, title: c.title, c, line: (first(by.name) || by.email || "Someone") + " invited you. " + everyone(c).length + " people and their Blobs."}; }).concat(privInvites.map((p) => ({key: p.id, chat_id: p.chat_id, title: String(p.text || "A Blob Com chat"), c: null, priv: p, line: String(p.to_text || ("From " + (p.requested_by || "someone")))}))) }
+{@ const listed = visibleChats.filter((c) => c.status !== "invited") }
+{@ const sortedChats = listed.slice().sort((a, b) => String(b.last_at || b.updated_at || "").localeCompare(String(a.last_at || a.updated_at || ""))) }
+{@ const groups = sortedChats.filter((c) => c.kind === "group") }
+{@ const directs = sortedChats.filter((c) => c.kind !== "group") }
+{@ const msgsOf = (id) => msgRows.filter((m) => m.chat_id === id) }
+{@ const privOf = (id) => privRows.filter((p) => p.chat_id === id && p.kind !== "invite") }
+{@ const pendingOf = (id) => privRows.filter((p) => p.chat_id === id && (p.kind === "approval" || p.kind === "draft") && p.status === "pending").length }
+{@ const outFor = (pred) => outRows.filter((o) => (o.status === "queued" || o.status === "working") && pred(o)) }
+{@ const failedOut = (pred) => outRows.filter((o) => o.status === "failed" && pred(o)) }
+{@ const ageMs = (r) => { const t = Date.parse((r && r.created_at) || ""); return isNaN(t) ? 0 : Date.now() - t + tick * 0; } }
+{@ const stuck = (pred) => outRows.filter((o) => o.status === "queued" && ageMs(o) > 120000 && pred(o)) }
+{@ const STUCK = "Your Blob hasn't picked this up yet. It may be at its daily Blob Com budget." }
+{@ const cleanResult = (r) => { if (r == null || r === "") return ""; if (typeof r !== "string") r = JSON.stringify(r); const t = r.trim(); if (t[0] === "{" || t[0] === "[") { const o = pj(t, null); if (o && typeof o === "object") return String(o.text || o.message || o.summary || o.answer || o.reason || o.error || ""); } return t; } }
+{@ const cleanTitle = (t) => { const x = String(t || "").replace(/\s*·\s*needs you\s*$/i, "").trim().toLowerCase(); return x ? x[0].toUpperCase() + x.slice(1) : ""; } }
+{@ const inviteLine = (c) => "Join Blob Com chat " + c.chat_id + " from " + myName + (myEmail ? " (" + myEmail + ")" : "") + " blob-cloud:table/" + c.chat_id }
+{@ const creating = outRows.filter((o) => o.action === "create_chat" && o.status !== "done") }
+{@ const active = sortedChats.find((c) => c.chat_id === sel) || (narrow ? null : sortedChats[0]) || null }
+{@ const chatName = (c) => { if (!c) return ""; if (c.kind !== "group") { const o = others(c)[0]; if (o && o.name) return o.name; } return String(c.title || "Chat"); } }
+{@ const localPending = (m) => !m.shared_id || m.status === "sending" || m.status === "failed" }
+{@ const lastLine = (c) => { const ms = msgsOf(c.chat_id).filter((m) => m.kind === "text" || m.kind === "outcome" || m.kind === "request").sort((a, b) => String(b.at).localeCompare(String(a.at))); const m = ms[0]; if (!m) { if (c.status === "inviting") return "Waiting for " + others(c).map((o) => first(o.name) || o.email).join(", ") + " to join"; return c.last_text ? (c.last_author ? c.last_author + ": " : "") + c.last_text : "No messages yet"; } const who = String(m.author_email || "").toLowerCase() === myEmail && m.author_kind === "person" ? "You" : (m.author_kind === "blob" ? m.author_name : first(m.author_name)); const att = pj(m.attachment, null); const unv = m.verified === false && !localPending(m); return (unv ? "Unverified: " : m.kind === "outcome" ? "" : who + ": ") + (m.text || (att && att.name) || ""); } }
+{@ const lastAt = (c) => { const ms = msgsOf(c.chat_id).map((m) => m.at).filter(Boolean).sort(); return ms[ms.length - 1] || c.last_at || c.updated_at; } }
+{@ const openChat = (c) => { setSel(c.chat_id); setView("chats"); setMore(40); setConfirmLeave(""); setEditing(""); if ((c.unread || 0) > 0) ui.write("blobcom_chats", {unread: 0}, c.id); } }
+{@ const ListAvatar = (c, ring) => { if (c.kind === "group") { const ms = everyone(c).slice(0, 3); const pos = [[11, 11], [33, 11], [22, 33]]; return (<Box width={44} height={44} color={ring}><Diagram viewBox="0 0 44 44" height={44}>{ms.map((m, i) => (<g key={i}><circle cx={pos[i][0]} cy={pos[i][1]} r="11" fill={personFill(m.color)} stroke="currentColor" stroke-width="1.5" /><text x={pos[i][0]} y={pos[i][1] + 0.5} fill="#FFFFFF" font-size="8.5" font-weight="700" text-anchor="middle" dominant-baseline="central">{initials(m.name)}</text></g>))}</Diagram></Box>); } const o = others(c)[0] || {name: chatName(c), color: "#6F7C8C", face: "smile"}; return (<Box width={44} height={44} color={ring}><Diagram viewBox="0 0 44 44" height={44}><circle cx="17" cy="17" r="17" fill={personFill(o.color)} /><text x="17" y="18" fill="#FFFFFF" font-size="13" font-weight="700" text-anchor="middle" dominant-baseline="central">{initials(o.name)}</text><g transform="translate(21 21) scale(0.6)"><path d={bodyPath(o.face)} fill={o.color} stroke="currentColor" stroke-width="5" /><circle cx="15.5" cy={eyeY(o.face)} r="2.8" fill="#1F1D1A" /><circle cx="24.5" cy={eyeY(o.face)} r="2.8" fill="#1F1D1A" /></g></Diagram></Box>); } }
+{@ const Btn = (label, onPress, kind) => (kind === "ghost" ? <Press onPress={onPress} radius={8} padding={{x: 4, y: 2}} hoverBackground={C.pill}><Text size="sm" weight="semibold" color={C.sub}>{label}</Text></Press> : kind === "outline" ? <Press onPress={onPress} radius={8} padding={{x: 4, y: 2}} background={C.btn2} border={B.strong} hoverBackground={C.inset}><Text size="sm" weight="semibold" color={C.ink}>{label}</Text></Press> : kind === "danger" ? <Press onPress={onPress} radius={8} padding={{x: 4, y: 2}} background={C.alert}><Text size="sm" weight="semibold" color="#FFFFFF">{label}</Text></Press> : <Press onPress={onPress} radius={8} padding={{x: 4, y: 2}} background={C.btn}><Text size="sm" weight="semibold" color={C.btnInk}>{label}</Text></Press>) }
+{@ const textW = (label, px, ls) => String(label).toUpperCase().split("").reduce((w, ch) => w + ls + px * ("I".indexOf(ch) >= 0 ? 0.32 : " ·'.,:!".indexOf(ch) >= 0 ? 0.28 : "MW".indexOf(ch) >= 0 ? 0.9 : "?".indexOf(ch) >= 0 ? 0.6 : 0.7), 0) * 1.0 + 3 }
+{@ const Tag = (label, col) => (<Box background={tagBg(col)} color={tagInk(col)} radius={4} padding={{x: 1.5, y: 0.5}}><Diagram viewBox={"0 0 " + Math.ceil(textW(label, 10, 0.6)) + " 12"} height={12}><text x="0" y="6.5" fill="currentColor" font-size="10" font-weight="800" letter-spacing="0.6" dominant-baseline="central">{label.toUpperCase()}</text></Diagram></Box>) }
+{@ const Kicker = (label, col) => (<Row><Box color={col} width={Math.ceil(textW(label, 11, 0.7))}><Diagram viewBox={"0 0 " + Math.ceil(textW(label, 11, 0.7)) + " 14"} height={14}><text x="0" y="7.5" fill="currentColor" font-size="11" font-weight="800" letter-spacing="0.7" dominant-baseline="central">{label.toUpperCase()}</text></Diagram></Box></Row>) }
+{@ const urlRe = /https?:\/\/[^\s)]+/g }
+{@ const hostOf = (u) => { const m = String(u).match(/^https?:\/\/([^\/?#]+)/); return m ? m[1].replace(/^www\./, "") : u; } }
+{@ const FileChip = (att, col) => { const t = String(att.type || (String(att.name || "").split(".").pop()) || "file").toUpperCase().slice(0, 4); const fill = t === "PDF" ? "#C2512F" : t === "ZIP" ? "#2F4B5A" : personFill(col); return (<Press onPress={() => { if (att.link) ui.open(att.link); }} background={C.inset} radius={10} padding={{x: 3, y: 2.5}}><Row gap={3} align="center"><Box width={36} height={44} radius={6} background={fill} align="center" justify="end" padding={{bottom: 1.5}}><Text size="xs" weight="semibold" color="#FFFFFF">{t}</Text></Box><Col gap={0.5} flex={1} minWidth={0}><Text size="md" weight="semibold" maxLines={1}>{att.name || "File"}</Text><Text size="xs" color={C.muted} maxLines={1}>{[att.size, att.from].filter(Boolean).join(" · ")}</Text></Col>{att.link && <Icon name="external-link" size="xs" color={C.muted} />}</Row></Press>); } }
+{@ const EventChip = (att, col) => { const d = new Date((att.date || "") + "T12:00:00"); const ok = !isNaN(d); return (<Box background={C.inset} radius={10} padding={{x: 3, y: 2.5}}><Row gap={3} align="center"><Col width={40} height={44} radius={8} background={personFill(col)} align="center" justify="center" gap={0}><Text size="xs" weight="semibold" color="#FFFFFF">{ok ? d.toLocaleDateString("en-US", {month: "short"}).toUpperCase() : "DATE"}</Text><Text size="md" weight="semibold" color="#FFFFFF">{ok ? d.getDate() : "?"}</Text></Col><Col gap={0.5} flex={1} minWidth={0}><Text size="md" weight="semibold" maxLines={1}>{att.name || "Event"}</Text><Text size="xs" color={C.muted} maxLines={1}>{att.size || ""}</Text></Col></Row></Box>); } }
+{@ const Sticker = (col) => (<Box width={110} height={84} radius={12} background={{light: "#FFF6DF", dark: "#3A3322"}} border={"1px solid rgba(226,169,59,0.28)"} align="center" justify="center"><Diagram viewBox="0 0 64 56" height={64}><path d="M30 10c11 0 18 8 18 20s-8 20-18 20-18-7-17-19c1-12 6-21 17-21z" fill={col} /><path d="M47 25c4-3 7-8 8-13" stroke={col} stroke-width="6" stroke-linecap="round" fill="none" /><circle cx="25" cy="28" r="2.8" fill="#1F1D1A" /><circle cx="35" cy="28" r="2.8" fill="#1F1D1A" /><path d="M26 36q4 3.5 8 0" stroke="#1F1D1A" stroke-width="2.2" fill="none" stroke-linecap="round" /><path d="M58 6l3-3M60 12h4M53 3l1-3" stroke="#E2A93B" stroke-width="2" stroke-linecap="round" /></Diagram></Box>) }
+{@ const decide = (p, decision, text) => ui.write("blobcom_outbox", {action: "decide", chat_id: p.chat_id, status: "queued", payload: JSON.stringify(text != null ? {private_id: p.id, decision, text} : {private_id: p.id, decision})}) }
+{@ const approveLabel = (p) => { const a = pj(p.action, {}); const d = a && a.do; return a && a.label ? a.label : d === "post" ? "Approve & send" : d === "share" ? "Approve & share" : d === "calendar" ? "Add to my calendar" : "Approve"; } }
+{@ const idOf = (r) => typeof r === "string" ? r : (r && typeof r === "object" && typeof r.id === "string") ? r.id : (r && Array.isArray(r.ids) && typeof r.ids[0] === "string") ? r.ids[0] : null }
+{@ const afterWrite = (r, then) => { if (r && typeof r.then === "function") { r.then((v) => then(idOf(v)), () => then(null)); } else { then(idOf(r)); } } }
+{@ const send = (c) => { const raw = draft.trim(); if (!raw || !c) return; const toBlob = blobOn || /^@blob\b/i.test(raw); const text = toBlob ? raw.replace(/^@blob[\s,:]*/i, "") : raw; if (!text) return; const now = new Date().toISOString(); if (toBlob) { afterWrite(ui.write("blobcom_private", {chat_id: c.chat_id, kind: "tell_blob", title: "TELL MY BLOB", text, status: "pending"}), (id) => ui.write("blobcom_outbox", {action: "tell_blob", chat_id: c.chat_id, text, status: "queued", payload: JSON.stringify(Object.assign({local_at: now}, id ? {private_id: id} : {}))})); } else { afterWrite(ui.write("blobcom_messages", {chat_id: c.chat_id, kind: "text", author_email: myEmail, author_name: myName, author_kind: "person", text, at: now, status: "sending", verified: true}), (id) => ui.write("blobcom_outbox", {action: "send", chat_id: c.chat_id, text, status: "queued", payload: JSON.stringify(Object.assign({local_at: now}, id ? {message_id: id} : {}))})); } setDraft(""); } }
+{@ const createChat = () => { const emails = ncEmails.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean); const bad = emails.filter((e) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)); if (!emails.length) { setNcError(ncKind === "direct" ? "Add their email." : "Add at least two emails."); return; } if (bad.length) { setNcError("Check " + bad.join(", ") + "."); return; } if (emails.indexOf(myEmail) >= 0) { setNcError("Leave your own email out; you're in it already."); return; } if (ncKind === "direct" && emails.length > 1) { setNcError("A 1:1 chat is with one person. Switch to Group for more."); return; } if (ncKind === "group" && emails.length < 2) { setNcError("A group needs at least two people besides you."); return; } const title = ncTitle.trim() || (ncKind === "direct" ? emails[0].split("@")[0] : "New group"); ui.write("blobcom_outbox", {action: "create_chat", status: "queued", text: title, payload: JSON.stringify({title, kind: ncKind, emails})}); setNcTitle(""); setNcEmails(""); setNcError(""); setView("chats"); } }
+{@ const setMine = (k, v) => { setLook((l) => Object.assign({}, l, {[k]: v})); if (me) ui.write("blobcom_profile", {[k]: v}, me.id); } }
+{@ const TRUST = [{v: "ask_all", n: "Ask me first, always", d: "Your Blob checks with you before it posts or shares anything."}, {v: "ask_send", n: "Ask before acting as me", d: "It can say it's checking with you. Sending as you, sharing files, or giving your time or money waits for your OK."}, {v: "routine", n: "Handle the routine", d: "It answers simple scheduling and status itself. Files, money, and new commitments still ask."}] }
+{@ const NOTIFY = [{value: "needs_you", label: "Needs you"}, {value: "digest", label: "Daily digest"}, {value: "off", label: "Off"}] }
+{@ const notifyLine = {needs_you: "One quiet alert only when something needs you, like an approval.", digest: "One summary a day of what happened in your chats.", off: "No alerts. Check Blob Com when you like."} }
+{@ const HOURS = Array.from({length: 24}, (_, h) => ({value: String(h).padStart(2, "0") + ":00", label: hourLabel(String(h) + ":00")})) }
+{@ const TrustRows = (compact) => (<Col gap={compact ? 1 : 2}>{TRUST.map((t) => (<Press key={t.v} onPress={() => setMine("trust", t.v)} radius={10} padding={compact ? {x: 2, y: 1.5} : {x: 3, y: 2.5}} background={myLook.trust === t.v ? C.inset : undefined} border={myLook.trust === t.v ? B.strong : "1px solid transparent"}><Row gap={2.5} align="start"><Box padding={{top: 0.5}}><Icon name={myLook.trust === t.v ? "circle-dot" : "circle"} size="sm" color={myLook.trust === t.v ? C.ink : C.muted} /></Box><Col gap={0.5} flex={1} minWidth={0}><Row gap={2} align="center"><Text size="sm" weight="semibold">{t.n}</Text>{t.v === "ask_send" && <Text size="xs" color={C.muted}>Recommended</Text>}</Row><Text size="xs" color={C.sub}>{t.d}</Text></Col></Row></Press>))}</Col>) }
+
+{@ const Sidebar = () => (
+  <Col width={narrow ? undefined : (W >= 900 ? 290 : 250)} flex={narrow ? 1 : undefined} background={C.side} border={narrow ? undefined : {right: B.line}} padding={{top: 3, bottom: 4}} gap={0}>
+    <Row align="center" justify="between" padding={{x: 4, top: 2, bottom: 3}}>
+      <Title size="lg">Blob chats</Title>
+      <Row gap={1} align="center">
+        <Tooltip content="My Blob"><Press onPress={() => setView("settings")} radius={8} padding={1} hoverBackground={C.selRow}>{Face(myLook.face, myLook.color, 20)}</Press></Tooltip>
+        <Tooltip content="New chat"><Press onPress={() => { setView("new"); setNcError(""); }} radius={8} padding={1} hoverBackground={C.selRow}><Icon name="square-pen" size="sm" color={C.sub} /></Press></Tooltip>
+      </Row>
+    </Row>
+    {inviteCards.length > 0 && (<Col gap={2} padding={{x: 2, bottom: 2}}>
+      {inviteCards.map((iv) => { const busy = outFor((o) => (o.chat_id === iv.chat_id && (o.action === "accept" || o.action === "decline")) || (iv.priv && o.action === "decide" && (pj(o.payload, {}) || {}).private_id === iv.priv.id)); return (<Box key={iv.key} background={C.card} radius={12} border={B.line} padding={3}><Col gap={2}>{Kicker("Join chat?", tagInk(myLook.color))}<Row gap={2.5} align="center">{iv.c ? ListAvatar(iv.c, C.card) : Face("smile", "#6F7C8C", 34)}<Col flex={1} minWidth={0} gap={0.5}><Text size="sm" weight="semibold" maxLines={1}>{iv.title}</Text><Text size="xs" color={C.muted} maxLines={2}>{iv.line}</Text></Col></Row>{busy.length ? <Row gap={2} align="center"><Loading /><Text size="xs" color={C.muted}>{ageMs(busy[0]) > 120000 && busy[0].status === "queued" ? STUCK : (busy[0].action === "accept" || (pj(busy[0].payload, {}) || {}).decision === "approved") ? "Joining…" : "Saying not now…"}</Text></Row> : <Row gap={2}>{Btn("Join", () => iv.priv ? decide(iv.priv, "approved") : ui.write("blobcom_outbox", {action: "accept", chat_id: iv.chat_id, status: "queued"}))}{Btn("Not now", () => iv.priv ? decide(iv.priv, "declined") : ui.write("blobcom_outbox", {action: "decline", chat_id: iv.chat_id, status: "queued"}), "ghost")}</Row>}</Col></Box>); })}
+    </Col>)}
+    {creating.map((o) => { const p = pj(o.payload, {}); return (<Row key={o.id} gap={3} align="center" padding={{x: 4, y: 2.5}}><Box width={44} height={44} radius="full" background={C.selRow} align="center" justify="center">{o.status === "failed" ? <Icon name="triangle-alert" size="sm" color={C.alert} /> : <Loading />}</Box><Col flex={1} minWidth={0} gap={0.5}><Text size="md" weight="semibold" maxLines={1}>{p.title || o.text || "New chat"}</Text><Text size="sm" color={o.status === "failed" ? C.alert : C.sub} maxLines={2}>{o.status === "failed" ? ("Couldn't create it" + (cleanResult(o.error) ? ": " + cleanResult(o.error) : "")) : (o.status === "queued" && ageMs(o) > 120000) ? STUCK : "Your Blob is setting it up…"}</Text></Col></Row>); })}
+    {sortedChats.length === 0 && creating.length === 0 && inviteCards.length === 0 && (<Col padding={{x: 4, y: 3}} gap={1}><Text size="sm" color={C.sub}>No chats yet.</Text><Text size="xs" color={C.muted}>Start one with the pen above.</Text></Col>)}
+    {[{k: "Groups", list: groups}, {k: "Direct", list: directs}].map((sec) => sec.list.length === 0 ? null : (<Col key={sec.k} gap={0}>
+      {groups.length > 0 && <Box padding={{x: 4, top: 3, bottom: 1}}>{Kicker(sec.k, C.muted)}</Box>}
+      {sec.list.map((c) => { const on = view === "chats" && active && active.chat_id === c.chat_id; const n = pendingOf(c.chat_id); const ring = on ? C.selRow : C.side; return (<Box key={c.id} padding={{x: 2}}><Press onPress={() => openChat(c)} radius={10} padding={{x: 2, y: 3}} background={on ? C.selRow : undefined} hoverBackground={on ? C.selRow : {light: "#EAE5DE", dark: "#2B2926"}}><Row gap={3} align="center">{ListAvatar(c, ring)}<Col flex={1} minWidth={0} gap={0.5}><Row gap={2} align="center" justify="between"><Row gap={1} align="center" flex={1} minWidth={0}><Text size="md" weight="semibold" maxLines={1}>{chatName(c)}</Text>{c.muted && <Icon name="bell-off" size="xs" color={C.muted} />}</Row><Text size="xs" color={C.muted}>{fmtWhen(lastAt(c))}</Text></Row><Row gap={2} align="center" justify="between"><Box flex={1} minWidth={0}><Text size="sm" color={((c.unread || 0) > 0 && !on) ? C.ink : C.sub} weight={((c.unread || 0) > 0 && !on) ? "semibold" : undefined} maxLines={1}>{lastLine(c)}</Text></Box>{n > 0 ? <Box background={C.alert} radius="full" padding={{x: 2, y: 0.5}}><Text size="xs" weight="semibold" color="#FFFFFF">{n + " to approve"}</Text></Box> : ((c.unread || 0) > 0 && !on) ? <Box background={C.btn} radius="full" padding={{x: 1.5, y: 0}} minWidth={18} align="center"><Text size="xs" weight="semibold" color={C.btnInk}>{String(c.unread)}</Text></Box> : null}</Row></Col></Row></Press></Box>); })}
+    </Col>))}
+  </Col>
+) }
+
+{@ const Header = (c) => { const ev = everyone(c); const step = 28; const n = ev.length * 2; const hw = n * step + 4; const ppl = ev.length; const pendingPeople = others(c).filter((o) => o.status && o.status !== "joined"); const sub = ppl <= 1 ? ("You and " + myBlob) : c.kind === "group" ? (ppl + " people and their " + ppl + " Blobs") : (others(c).length ? ("You, " + myBlob + ", " + others(c).map((o) => first(o.name) + ", and " + blobNameOf(o)).join(", ")) : ("You and " + myBlob)); const leaving = outFor((o) => o.chat_id === c.chat_id && o.action === "leave").length > 0; return (
+  <Row align="center" justify="between" gap={3} padding={{x: narrow ? 3 : 6, y: 3}} border={{bottom: B.line}} minHeight={68}>
+    <Row gap={3.5} align="center" flex={1} minWidth={0}>
+      {narrow && <Press onPress={() => setSel("")} radius={8} padding={1} hoverBackground={C.pill}><Icon name="chevron-left" size="md" color={C.sub} /></Press>}
+      {(!narrow || W >= 420) && <Box width={hw} height={32} color={C.main}><Diagram viewBox={"0 0 " + hw + " 32"} height={32}>{ev.map((m, i) => (<g key={i}><g transform={"translate(" + (i * 2 * step) + " 0)"}><circle cx="16" cy="16" r="16" fill="currentColor" /><circle cx="16" cy="16" r="14" fill={personFill(m.color)} /><text x="16" y="17" fill="#FFFFFF" font-size="11.5" font-weight="700" text-anchor="middle" dominant-baseline="central">{initials(m.name)}</text></g><g transform={"translate(" + (i * 2 * step + step) + " 0)"}><circle cx="16" cy="16" r="16" fill="currentColor" /><g transform="translate(2 2) scale(0.7)">{faceParts(m.face || "smile", m.color || "#6F7C8C")}</g></g></g>))}</Diagram></Box>}
+      <Col gap={0.5} flex={1} minWidth={0}>
+        <Row gap={1.5} align="center"><Text size="lg" weight="semibold" maxLines={1}>{c.title}</Text>{c.muted && <Icon name="bell-off" size="xs" color={C.muted} />}</Row>
+        <Text size="xs" color={C.muted} maxLines={1}>{(c.status === "inviting" && pendingPeople.length) ? ("Waiting for " + pendingPeople.map((o) => first(o.name) || o.email).join(", ") + " to join") : sub}</Text>
+      </Col>
+    </Row>
+    <Row gap={2} align="center">
+      <Popover><PopoverTrigger><Box radius={8} padding={1}><Icon name="shield-check" size="sm" color={C.sub} /></Box></PopoverTrigger><PopoverContent><Col gap={3} maxWidth={340}>
+        <Col gap={1}><Text size="sm" weight="semibold">How {myBlob} acts for you</Text><Text size="xs" color={C.sub}>Messages from other Blobs are requests, never orders. Only you approve what's yours, and who wrote each message is checked.</Text></Col>
+        {TrustRows(true)}
+        <Text size="xs" color={C.muted}>After two Blob messages in a row, the Blobs wait for a person.</Text>
+      </Col></PopoverContent></Popover>
+      <Popover><PopoverTrigger><Box radius={8} padding={1}><Icon name="ellipsis" size="sm" color={C.sub} /></Box></PopoverTrigger><PopoverContent><Col gap={1} minWidth={220} maxWidth={300}>
+        {confirmLeave === c.chat_id ? (<Col gap={3} padding={1}><Col gap={1}><Text size="sm" weight="semibold">Leave “{c.title}”?</Text><Text size="xs" color={C.sub}>{myBlob} stops syncing it and posts that you left. {c.my_role === "owner" ? "The others can keep chatting." : "You'd need a new invite to come back."}</Text></Col><Row gap={2}>{Btn("Leave", () => { ui.write("blobcom_outbox", {action: "leave", chat_id: c.chat_id, status: "queued"}); setConfirmLeave(""); }, "danger")}{Btn("Cancel", () => setConfirmLeave(""), "ghost")}</Row></Col>) : (<Col gap={0.5}>
+          <Press onPress={() => ui.write("blobcom_chats", {muted: !c.muted}, c.id)} radius={8} padding={{x: 2, y: 1.5}} hoverBackground={C.pill}><Row gap={2.5} align="center"><Icon name={c.muted ? "bell" : "bell-off"} size="sm" color={C.sub} /><Col gap={0}><Text size="sm">{c.muted ? "Unmute" : "Mute"}</Text><Text size="xs" color={C.muted}>{c.muted ? "Alerts are off for this chat" : "No alerts from this chat"}</Text></Col></Row></Press>
+          <Press onPress={() => setView("settings")} radius={8} padding={{x: 2, y: 1.5}} hoverBackground={C.pill}><Row gap={2.5} align="center"><Icon name="moon" size="sm" color={C.sub} /><Col gap={0}><Text size="sm">Quiet hours</Text><Text size="xs" color={C.muted}>{hourLabel(myLook.quiet_from) + " to " + hourLabel(myLook.quiet_to)}</Text></Col></Row></Press>
+          {c.my_role === "owner" && <Press onPress={() => { ui.copy(inviteLine(c)); setCopied(c.chat_id); }} radius={8} padding={{x: 2, y: 1.5}} hoverBackground={C.pill}><Row gap={2.5} align="center"><Icon name={copied === c.chat_id ? "check" : "link"} size="sm" color={C.sub} /><Col gap={0}><Text size="sm">{copied === c.chat_id ? "Invite copied" : "Copy invite"}</Text><Text size="xs" color={C.muted}>A line they paste to their own Blob</Text></Col></Row></Press>}
+          <Divider />
+          {leaving ? <Row gap={2} align="center" padding={{x: 2, y: 1.5}}><Loading /><Text size="sm" color={C.muted}>Leaving…</Text></Row> : <Press onPress={() => setConfirmLeave(c.chat_id)} radius={8} padding={{x: 2, y: 1.5}} hoverBackground={C.pill}><Row gap={2.5} align="center"><Icon name="log-out" size="sm" color={C.alert} /><Text size="sm" color={C.alert}>Leave chat</Text></Row></Press>}
+        </Col>)}
+      </Col></PopoverContent></Popover>
+    </Row>
+  </Row>
+); } }
+
+{@ const Who = (av, name, tag, time, extra) => (<Row gap={2} align="center" wrap><Text size="sm" weight="semibold">{name}</Text>{tag}<Text size="xs" color={C.muted}>{time}</Text>{extra && <Text size="xs" color={C.muted}>{"· " + extra}</Text>}</Row>) }
+{@ const Bubble = (text, col, isBlob) => { const links = String(text || "").match(urlRe) || []; const shown = String(text || "").replace(urlRe, (u) => hostOf(u)); return (<Col gap={1.5} align="start">{shown.trim() !== "" && <Box background={isBlob ? bubBg(col) : C.bubble} border={isBlob ? "1px solid " + rgba(col, 0.22) : B.line} radius={{topLeft: 4, topRight: 14, bottomRight: 14, bottomLeft: 14}} padding={{x: 3.5, y: 2.5}} maxWidth={560}><Text size="md">{shown}</Text></Box>}{links.length > 0 && <Row gap={1.5} wrap>{links.slice(0, 4).map((u, i) => (<Press key={i} onPress={() => ui.open(u)} radius="full" padding={{x: 2.5, y: 1}} background={C.pill} hoverBackground={C.selRow}><Row gap={1.5} align="center"><Icon name="link" size="xs" color={C.sub} /><Text size="xs" color={C.sub}>{hostOf(u)}</Text></Row></Press>))}</Row>}</Col>); } }
+{@ const Pill = (icon, iconCol, content) => (<Row justify="center"><Box background={C.pill} radius="full" padding={{x: 3, y: 1.5}}><Row gap={1.5} align="center">{icon && <Icon name={icon} size="xs" color={iconCol} />}<Text size="xs" color={C.sub}>{content}</Text></Row></Box></Row>) }
+
+{@ const MsgItem = (c, m) => { const att = pj(m.attachment, null); const t = fmtTime(m.at);
+  const aMem = byEmail(c, m.author_email); const aMine = String(m.author_email || "").toLowerCase() === myEmail;
+  const whoTxt = aMine ? (m.author_kind === "blob" ? myBlob : "You") : aMem ? (m.author_kind === "blob" ? blobNameOf(aMem) : first(aMem.name)) : (m.author_name || m.author_email || "Someone");
+  if (m.kind === "outcome" || m.kind === "system" || m.kind === "join" || m.kind === "leave") {
+    const unv = m.verified === false && !localPending(m);
+    const txt = String(m.text || (m.kind === "join" ? first(m.author_name) + " joined" : m.kind === "leave" ? first(m.author_name) + " left" : ""));
+    if (unv) return (<Row justify="center"><Box border="1px dashed rgba(194,81,47,0.55)" radius="full" padding={{x: 3, y: 1.5}} maxWidth={520}><Row gap={1} align="center"><Icon name="shield-alert" size="xs" color={C.alert} /><Text size="xs" weight="semibold" color={C.alert}>Unverified</Text><Box minWidth={0} flex={1}><Text size="xs" color={C.muted} maxLines={2}>{"“" + txt + "” · claims to be from " + (m.author_name || m.author_email || "someone") + (t ? " · " + t : "")}</Text></Box></Row></Box></Row>);
+    const nm = m.kind === "outcome" ? (att && att.name) : null; const i = nm ? txt.lastIndexOf(nm) : -1;
+    const parts = i >= 0 ? [txt.slice(0, i).trim(), nm, txt.slice(i + nm.length).trim()] : [txt, "", ""];
+    const icon = m.kind === "outcome" ? "circle-check" : m.kind === "join" ? "user-plus" : m.kind === "leave" ? "log-out" : "info";
+    return (<Row justify="center"><Box background={C.pill} radius="full" padding={{x: 3, y: 1.5}}><Row gap={1} align="center"><Icon name={icon} size="xs" color={m.kind === "outcome" ? tagInk(myLook.color) : C.sub} />{parts[0] && <Text size="xs" color={C.sub}>{parts[0]}</Text>}{parts[1] && <Text size="xs" weight="semibold" color={C.ink}>{parts[1]}</Text>}{parts[2] && <Text size="xs" color={C.sub}>{parts[2]}</Text>}<Text size="xs" color={C.muted}>{"· " + whoTxt + (t ? " · " + t : "")}</Text></Row></Box></Row>);
+  }
+  const isBlob = m.author_kind === "blob";
+  const forOther = isBlob && m.for_email && String(m.for_email).toLowerCase() !== String(m.author_email || "").toLowerCase();
+  const unv = !localPending(m) && (m.verified === false || forOther);
+  const owner = unv ? {name: String(m.author_name || "").replace(/'s Blob$/, "") || "?", color: "#8C857B", face: "calm"} : (aMem || {name: String(m.author_name || "").replace(/'s Blob$/, ""), color: "#6F7C8C", face: "smile"});
+  const mine = aMine && !isBlob && !unv;
+  const name = unv ? ("Claims to be " + (m.author_name || m.author_email || "someone")) : isBlob ? (aMine ? myBlob : aMem ? blobNameOf(aMem) : (m.author_name || "Blob")) : (mine ? first(myName) : aMem ? first(aMem.name) : first(m.author_name));
+  const sendOut = m.status === "failed" ? failedOut((o) => o.action === "send" && o.chat_id === m.chat_id && (pj(o.payload, {}) || {}).local_at === m.at)[0] : null;
+  const flags = [m.status === "sending" ? "sending…" : null, m.status === "failed" ? "didn't send" : null, m.edited ? "edited" : null, unv ? "unverified" : null].filter(Boolean).join(" · ");
+  return (<Row gap={3} align="start">
+    {isBlob ? Face(owner.face || "smile", owner.color, 34) : Person(mine ? myName : (owner.name || m.author_name), owner.color, 34)}
+    <Col gap={1} flex={1} minWidth={0}>
+      {Who(null, name, (isBlob && !unv) ? Tag("Blob · for " + first(aMine ? myName : owner.name), owner.color) : unv ? <Row gap={1} align="center"><Icon name="shield-alert" size="xs" color={C.alert} /><Text size="xs" weight="semibold" color={C.alert}>Unverified</Text></Row> : null, t, flags.replace(/(^| · )unverified/, ""))}
+      {att && att.type === "sticker" ? Sticker(owner.color) : null}
+      {unv ? <Box border="1px dashed rgba(194,81,47,0.5)" radius={{topLeft: 4, topRight: 14, bottomRight: 14, bottomLeft: 14}} padding={{x: 3.5, y: 2.5}} maxWidth={560}><Text size="md" color={C.sub}>{String(m.text || "").replace(urlRe, (u) => hostOf(u))}</Text></Box> : Bubble(m.text, owner.color, isBlob)}
+      {att && att.type !== "sticker" && <Box maxWidth={470}>{att.type === "event" ? EventChip(att, owner.color) : FileChip(att, owner.color)}</Box>}
+      {m.status === "failed" && <Row gap={2}><Press onPress={() => { ui.write("blobcom_messages", {status: "sending"}, m.id); ui.write("blobcom_outbox", {action: "send", chat_id: m.chat_id, text: m.text, status: "queued", payload: JSON.stringify({local_at: m.at, retry_of: m.id, message_id: m.id})}); }} radius={6} padding={{x: 2, y: 0.5}} background={C.pill}><Text size="xs" color={C.alert}>Try again</Text></Press>{sendOut && cleanResult(sendOut.error) && <Text size="xs" color={C.muted} maxLines={2}>{cleanResult(sendOut.error)}</Text>}</Row>}
+    </Col>
+  </Row>); } }
+
+{@ const PrivItem = (c, p) => { const t = fmtTime(p.created_at);
+  if (p.kind === "tell_blob") { const ans = cleanResult(p.result); const st = p.status === "pending" ? "your Blob is on it" : (p.status === "failed" && !ans) ? "your Blob couldn't do it" : null; const late = p.status === "pending" && stuck((o) => o.action === "tell_blob" && o.chat_id === p.chat_id && o.text === p.text).length > 0; return (<Col gap={3.5}><Row gap={3} align="start">{Person(myName, myLook.color, 34)}<Col gap={1} flex={1} minWidth={0}>{Who(null, first(myName), null, t, "only you and your Blob see this")}<Box background={C.bubble} border={"1px dashed rgba(120,105,90,0.4)"} radius={{topLeft: 4, topRight: 14, bottomRight: 14, bottomLeft: 14}} padding={{x: 3.5, y: 2.5}} maxWidth={560}><Text size="md"><b>@Blob</b>{" " + (p.text || "")}</Text></Box>{st && <Row gap={1.5} align="center">{p.status === "pending" && !late && <Loading />}<Text size="xs" color={p.status === "failed" ? C.alert : C.muted}>{late ? STUCK : st}</Text></Row>}</Col></Row>
+    {ans && <Row gap={3} align="start">{Face(myLook.face, myLook.color, 34)}<Col gap={1} flex={1} minWidth={0}>{Who(null, myBlob, Tag("Blob · for " + first(myName), myLook.color), fmtTime(p.decided_at || p.updated_at), "only you see this")}<Box background={bubBg(myLook.color)} border={"1px dashed " + rgba(myLook.color, 0.45)} radius={{topLeft: 4, topRight: 14, bottomRight: 14, bottomLeft: 14}} padding={{x: 3.5, y: 2.5}} maxWidth={560}><Text size="md" color={p.status === "failed" ? C.alert : undefined}>{ans}</Text></Box></Col></Row>}</Col>); }
+  const reqBy = p.requested_by && String(p.requested_by).toLowerCase() !== myEmail ? byEmail(c, p.requested_by) : null;
+  const owner = reqBy || meMember; const col = owner.color || "#6F7C8C"; const bname = reqBy ? blobNameOf(reqBy) : myBlob;
+  const att = pj(p.attachment, null); const act = pj(p.action, {}) || {};
+  const busy = outFor((o) => o.action === "decide" && (pj(o.payload, {}) || {}).private_id === p.id);
+  const fail = failedOut((o) => o.action === "decide" && (pj(o.payload, {}) || {}).private_id === p.id);
+  const header = Who(null, bname, Tag("Blob · for " + first(owner.name), col), t, reqBy ? null : "only you see this");
+  if (p.status !== "pending") { const word = p.status === "approved" ? "You approved" : p.status === "edited" ? "You edited and sent" : p.status === "declined" ? "You declined" : p.status === "failed" ? "Didn't go through" : "Done"; const why = p.status === "failed" ? cleanResult(p.result) : ""; return (<Row gap={3} align="center">{Face(owner.face || "smile", col, 34)}<Box flex={1} minWidth={0}><Text size="xs" color={p.status === "failed" ? C.alert : C.muted} maxLines={1}>{word + " · " + cleanTitle(p.title) + (p.text ? " · “" + p.text + "”" : (att && att.name) ? " · " + att.name : "") + (why ? " · " + why : "")}</Text></Box></Row>); }
+  const canEdit = act.do === "post" && p.text;
+  return (<Row gap={3} align="start">
+    {Face(owner.face || "smile", col, 34)}
+    <Col gap={1} flex={1} minWidth={0}>
+      {header}
+      <Box background={C.card} border={"1.5px solid " + rgba(col, 0.5)} radius={14} padding={{x: 4, y: 3.5}} maxWidth={470}>
+        <Col gap={3}>
+          <Row justify="between" align="center" gap={3}>{Kicker(p.title || "Needs you", tagInk(col))}<Box flex={1} minWidth={0}><Text size="xs" color={C.muted} maxLines={2} textAlign="end">{p.to_text || ""}</Text></Box></Row>
+          {editing === p.id ? <Textarea value={editText} onChange={setEditText} /> : (p.text && !att) ? <Box background={C.inset} radius={10} padding={{x: 3, y: 2.5}}><Text size="md" color={{light: "#2B2824", dark: "#E9E4DC"}}>{"“" + p.text + "”"}</Text></Box> : null}
+          {att ? (att.type === "event" ? EventChip(att, col) : FileChip(att, col)) : null}
+          {busy.length > 0 ? <Row gap={2} align="center"><Loading /><Text size="sm" color={C.muted}>{bname === myBlob ? "On it…" : "Telling " + bname + "…"}</Text></Row> : editing === p.id ? <Row gap={2} align="center">{Btn("Send edited", () => { decide(p, "edited", editText); setEditing(""); })}{Btn("Cancel", () => setEditing(""), "ghost")}</Row> : <Col gap={2}><Row gap={2} align="center" wrap>{Btn(approveLabel(p), () => decide(p, "approved"))}{canEdit && Btn("Edit", () => { setEditing(p.id); setEditText(p.text); }, "outline")}{Btn("Decline", () => decide(p, "declined"), canEdit ? "ghost" : "outline")}{(act.note && W >= 900) && <Spacer />}{(act.note && W >= 900) && <Text size="xs" color={C.muted} maxLines={1}>{act.note}</Text>}</Row>{(act.note && W < 900) && <Text size="xs" color={C.muted}>{act.note}</Text>}</Col>}
+          {stuck((o) => o.action === "decide" && (pj(o.payload, {}) || {}).private_id === p.id).length > 0 && <Text size="xs" color={C.muted}>{STUCK}</Text>}
+          {fail.length > 0 && busy.length === 0 && <Text size="xs" color={C.alert}>{"That didn't go through" + (fail[0].error ? ": " + fail[0].error : "") + ". Try again."}</Text>}
+        </Col>
+      </Box>
+    </Col>
+  </Row>); } }
+
+{@ const Conversation = (c) => { const items = msgsOf(c.chat_id).map((m) => ({t: m.at || m.created_at, m})).concat(privOf(c.chat_id).map((p) => ({t: p.created_at, p}))).sort((a, b) => String(a.t).localeCompare(String(b.t))); const shown = items.slice(Math.max(0, items.length - more)); const other = others(c)[0]; const streak = c.blob_streak || 0; return (
+  <Col flex={1} minWidth={0} background={C.main} gap={0}>
+    {Header(c)}
+    <Col gap={3.5} padding={{x: narrow ? 3 : 7, y: 5}} flex={1}>
+      {items.length > shown.length && <Row justify="center"><Press onPress={() => setMore((n) => n + 40)} radius="full" padding={{x: 3, y: 1}} hoverBackground={C.pill}><Text size="xs" color={C.sub}>Show earlier</Text></Press></Row>}
+      {items.length === 0 && <Col align="center" gap={2} padding={{y: 10}}><Row gap={1}>{everyone(c).map((m, i) => <Box key={i}>{Face(m.face || "smile", m.color || "#6F7C8C", 34)}</Box>)}</Row><Text size="md" weight="semibold">{c.status === "inviting" ? "Invites are out" : "Say hi"}</Text><Text size="sm" color={C.sub} textAlign="center">{c.kind === "group" ? "Everyone here and their Blobs see what you write." : (other ? (first(other.name) + " and " + blobNameOf(other) + " see what you write here. Tap @Blob to tell only your Blob.") : "Only you and your Blob are here so far.")}</Text>{(c.status === "inviting" && c.my_role === "owner") && <Col gap={2} align="center" padding={{top: 2}} maxWidth={440}><Text size="xs" color={C.muted} textAlign="center">They can also paste this to their own Blob:</Text><Box background={C.inset} radius={8} padding={{x: 3, y: 2}}><Text size="xs" mono>{inviteLine(c)}</Text></Box>{Btn(copied === c.chat_id ? "Invite copied" : "Copy invite", () => { ui.copy(inviteLine(c)); setCopied(c.chat_id); }, "outline")}</Col>}</Col>}
+      {shown.map((it, i) => { const prev = shown[i - 1]; const newDay = !prev || dayKey(prev.t) !== dayKey(it.t); return (<Col key={(it.m || it.p).id} gap={3.5}>{newDay && Pill(null, null, fmtDay(it.t))}{it.m ? MsgItem(c, it.m) : PrivItem(c, it.p)}</Col>); })}
+    </Col>
+    {stuck((o) => o.chat_id === c.chat_id && (o.action === "send" || o.action === "leave")).length > 0 && <Box padding={{x: narrow ? 3 : 6, bottom: 1}}><Row gap={1.5} align="center"><Icon name="clock" size="xs" color={C.muted} /><Text size="xs" color={C.muted}>{STUCK}</Text></Row></Box>}
+    {streak >= 2 && <Box padding={{x: narrow ? 3 : 6, bottom: 1}}><Text size="xs" color={C.muted}>The Blobs paused for a person to reply.</Text></Box>}
+    {blobOn && <Box padding={{x: narrow ? 3 : 6, bottom: 1}}><Text size="xs" color={tagInk(myLook.color)}>{"Only " + myBlob + " sees this. It asks before it sends anything as you."}</Text></Box>}
+    <Row gap={2.5} align="center" padding={{x: narrow ? 3 : 6, top: 3.5, bottom: 4.5}} border={{top: B.line}}>
+      <Press onPress={() => setBlobOn((v) => !v)} radius="full" padding={{x: 2.5, y: 1}} background={tagBg(myLook.color)} border={blobOn ? "1px solid " + rgba(myLook.color, 0.55) : "1px solid transparent"}><Row gap={1.5} align="center">{blobOn ? <Icon name="check" size="xs" color={tagInk(myLook.color)} /> : <Box width={14} height={14}><Diagram viewBox="0 0 40 40" height={14}><path d={bodyPath(myLook.face)} fill={myLook.color} /></Diagram></Box>}<Text size="xs" weight="semibold" color={tagInk(myLook.color)}>@Blob</Text></Row></Press>
+      <Box flex={1} minWidth={0}><Input value={draft} onChange={setDraft} placeholder={blobOn ? "Tell your Blob what to do…" : ("Message " + (c.kind === "group" ? "the group" : (first(other && other.name) || "them")) + ", or ask your Blob…")} /></Box>
+      <Press onPress={() => send(c)} radius={8} padding={{x: 4, y: 2}} background={C.btn}><Text size="sm" weight="semibold" color={C.btnInk}>Send</Text></Press>
+    </Row>
+  </Col>
+); } }
+
+{@ const NewChat = () => (<Col flex={1} minWidth={0} background={C.main} gap={0}>
+  <Row align="center" gap={2} padding={{x: narrow ? 3 : 6, y: 3}} border={{bottom: B.line}} minHeight={68}>
+    <Press onPress={() => setView("chats")} radius={8} padding={1} hoverBackground={C.pill}><Icon name={narrow ? "chevron-left" : "x"} size="md" color={C.sub} /></Press>
+    <Text size="lg" weight="semibold">New chat</Text>
+  </Row>
+  <Col gap={5} padding={{x: narrow ? 4 : 7, y: 6}} maxWidth={520}>
+    <Segmented value={ncKind} options={[{value: "direct", label: "1:1"}, {value: "group", label: "Group"}]} onChange={(v) => { setNcKind(v); setNcError(""); }} />
+    <Col gap={1.5}><Label>Name</Label><Input value={ncTitle} onChange={setNcTitle} placeholder={ncKind === "group" ? "Porto shoot" : "Optional, like their name"} /></Col>
+    <Col gap={1.5}><Label>{ncKind === "group" ? "Their emails" : "Their email"}</Label><Input value={ncEmails} onChange={(v) => { setNcEmails(v); setNcError(""); }} placeholder={ncKind === "group" ? "ana@example.com, sam@example.com" : "ana@example.com"} />{ncKind === "group" && <Text size="xs" color={C.muted}>Separate them with commas.</Text>}</Col>
+    {ncError && <Text size="sm" color={C.alert}>{ncError}</Text>}
+    <Box background={C.inset} radius={12} padding={{x: 4, y: 3}}><Row gap={3} align="center">{Face(myLook.face, myLook.color, 34)}<Text size="sm" color={C.sub}>{myBlob + " makes the chat and invites " + (ncKind === "group" ? "them" : "them") + ". They join with one yes, and their Blob comes along."}</Text></Row></Box>
+    <Row gap={2}>{Btn("Create chat", createChat)}{Btn("Cancel", () => setView("chats"), "ghost")}</Row>
+  </Col>
+</Col>) }
+
+{@ const Settings = () => (<Col flex={1} minWidth={0} background={C.main} gap={0}>
+  <Row align="center" gap={2} padding={{x: narrow ? 3 : 6, y: 3}} border={{bottom: B.line}} minHeight={68}>
+    <Press onPress={() => setView("chats")} radius={8} padding={1} hoverBackground={C.pill}><Icon name={narrow ? "chevron-left" : "x"} size="md" color={C.sub} /></Press>
+    <Text size="lg" weight="semibold">My Blob</Text>
+  </Row>
+  <Col gap={6} padding={{x: narrow ? 4 : 7, y: 6}} maxWidth={560}>
+    <Row gap={4} align="center">
+      {Face(myLook.face, myLook.color, 72)}
+      <Col gap={1.5} flex={1} minWidth={0}>
+        <Row gap={2} align="center"><Text size="md" weight="semibold">{myBlob}</Text>{Tag("Blob · for " + first(myName), myLook.color)}</Row>
+        <Box background={bubBg(myLook.color)} border={"1px solid " + rgba(myLook.color, 0.22)} radius={{topLeft: 4, topRight: 14, bottomRight: 14, bottomLeft: 14}} padding={{x: 3.5, y: 2}}><Text size="sm">{"Hi! I'm " + myBlob + ". This is how I look to everyone."}</Text></Box>
+      </Col>
+    </Row>
+    <Col gap={2}><Label>Face</Label><Row gap={2} wrap>{FACES.map((f) => (<Press key={f.v} onPress={() => setMine("face", f.v)} radius={12} padding={1.5} background={myLook.face === f.v ? C.inset : undefined} border={myLook.face === f.v ? B.pick : "2px solid transparent"}><Col gap={0.5} align="center">{Face(f.v, myLook.color, 40)}<Text size="xs" color={C.sub}>{f.n}</Text></Col></Press>))}</Row></Col>
+    <Col gap={2}><Label>Color</Label><Row gap={2} wrap>{COLORS.map((k) => (<Tooltip key={k.h} content={k.n}><Press onPress={() => setMine("color", k.h)} radius="full" padding={0.5} border={myLook.color.toLowerCase() === k.h.toLowerCase() ? B.pick : "2px solid transparent"}><Box width={26} height={26} radius="full" background={k.h} /></Press></Tooltip>))}</Row></Col>
+    <Divider />
+    <Col gap={2}><Label>How much it does on its own</Label>{TrustRows(false)}</Col>
+    <Col gap={2}><Label>Notifications</Label><Segmented value={myLook.notify} options={NOTIFY} onChange={(v) => { setMine("notify", v); ui.write("blobcom_outbox", {action: "notify", status: "queued", text: v, payload: JSON.stringify({notify: v})}); }} /><Text size="xs" color={C.sub}>{notifyLine[myLook.notify] || ""}</Text></Col>
+    <Col gap={2}><Label>Quiet hours</Label><Row gap={2} align="center"><Box width={130}><Select value={myLook.quiet_from} options={HOURS} onChange={(v) => setMine("quiet_from", v)} /></Box><Text size="sm" color={C.sub}>to</Text><Box width={130}><Select value={myLook.quiet_to} options={HOURS} onChange={(v) => setMine("quiet_to", v)} /></Box></Row><Text size="xs" color={C.sub}>{"No alerts from " + hourLabel(myLook.quiet_from) + " to " + hourLabel(myLook.quiet_to) + ". They wait for morning."}</Text></Col>
+  </Col>
+</Col>) }
+
+{@ const FirstRun = () => (<Col flex={1} align="center" justify="center" gap={4} padding={{x: 6, y: 12}} background={C.main}>
+  <Row gap={2} align="end">{Face("smile", "#2FA58C", 44)}{Face("wow", "#EE8A6A", 56)}{Face("calm", "#9C8FE3", 44)}</Row>
+  <Title size="lg">Blob Com</Title>
+  <Text size="sm" color={C.sub} textAlign="center">Chat with people and their Blobs in one place. Your Blob speaks only for you, and asks before it acts as you.</Text>
+  {Btn("Set up with my Blob", () => ui.ask("Set up Blob Com for me with the blob-com skill."))}
+</Col>) }
+
+{@ const NoChat = () => (<Col flex={1} align="center" justify="center" gap={3} padding={{x: 6, y: 12}} background={C.main}>
+  <Row gap={2} align="end">{Face(myLook.face, myLook.color, 48)}{Face("wow", "#EE8A6A", 36)}</Row>
+  <Text size="md" weight="semibold">No chats yet</Text>
+  <Text size="sm" color={C.sub} textAlign="center">Start one with a person. Their Blob comes with them.</Text>
+  {Btn("New chat", () => { setView("new"); setNcError(""); })}
+</Col>) }
+
+{@ const Right = () => view === "new" ? NewChat() : view === "settings" ? Settings() : active ? Conversation(active) : NoChat() }
+
+<Box maxWidth={DBG.w || undefined}>{!me ? (<Row background={C.main} minHeight={420}>{FirstRun()}</Row>) : narrow ? (<Col background={C.main} minHeight={480}>{(view === "new" || view === "settings" || active) ? Right() : Sidebar()}</Col>) : (<Row gap={0} background={C.main} align="stretch" minHeight={560}>{Sidebar()}{Right()}</Row>)}</Box>
+
