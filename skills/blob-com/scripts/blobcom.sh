@@ -30,7 +30,7 @@
 
 set -u
 BLOB="${BLOBCOM_BLOB:-blob}"
-VERSION="2"   # bump on every release; copies compare it with the public repo to offer an update
+VERSION="3"   # bump on every release; copies compare it with the public repo to offer an update
 RELAY_ID="blob-com-relay"
 WORKER_ID="blob-com-worker"; WORKER_NAME="Blob Comm worker"
 RELAY_MODEL="${BLOBCOM_RELAY_MODEL:-anthropic:claude-haiku-5-5}"   # cheapest that reliably runs the script
@@ -509,7 +509,7 @@ cmd_sync() {
       from_me:(($row.author_email|ascii_downcase)==($me|ascii_downcase) and $v.verified),
       # mentions: "<email>" pings that person; "blob:<email>" or "all-blobs" hands the row to that Blob
       pings_me:((($row.mentions // "") | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$";""))) as $ms | ($ms | index($me|ascii_downcase)) != null),
-      addresses_me:((($row.mentions // "") | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$";""))) as $ms | ($ms | index("blob:" + ($me|ascii_downcase))) != null or ($ms | index("all-blobs")) != null)
+      addresses_me:(((($row.mentions // "") | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$";""))) as $ms | ($ms | index("blob:" + ($me|ascii_downcase))) != null or ($ms | index("all-blobs")) != null)
         or (($bn | ascii_downcase | gsub("[\u0027\u2019]";"") | gsub("[^a-z0-9]+";" ") | gsub("^ +| +$";"")) as $b | $b != "" and ((" " + (($row.text // "") | ascii_downcase | gsub("[\u0027\u2019]";"") | gsub("[^a-z0-9]+";" ")) + " ") | contains(" " + $b + " "))))}]')
     i=$((i+1))
   done
